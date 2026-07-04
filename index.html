@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blog</title>
+    <title>Pl@g</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- CSS -->
@@ -14,7 +14,7 @@
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top navbar-custom">
         <div class="container">
-            <a class="navbar-brand" href="javascript:void(0)" onclick="navigateTo('home')">Blog</a>
+            <a class="navbar-brand" href="javascript:void(0)" onclick="navigateTo('home')">Pl@g</a>
             
             <div class="d-flex flex-nowrap align-items-center">
                 <input type="text" id="search-input" class="form-control me-2" placeholder="Buscar..." style="width: 150px;">
@@ -22,13 +22,14 @@
                 <div id="auth-container" class="d-flex flex-nowrap align-items-center">
                     
                     <div id="auth-logged-out" class="d-flex flex-nowrap">
+                        <button class="btn btn-outline-primary me-2" onclick="navigateTo('blogs')">Blogs</button>
                         <button class="btn btn-outline-primary me-2" data-bs-toggle="modal" data-bs-target="#loginModal">Login</button>
                         <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#registerModal">Cadastrar</button>
                     </div>
 
                     <div id="auth-logged-in" class="d-flex flex-nowrap d-none">
                         <button class="btn btn-outline-primary me-2" onclick="navigateTo('meu-cadastro')">Meu Cadastro</button>
-                        <button class="btn btn-outline-primary me-2" onclick="navigateTo('meus-blogs')">Meus Blogs</button>
+                        <button class="btn btn-outline-primary me-2" onclick="navigateTo('blogs')">Meus Blogs</button>
                         <button class="btn btn-outline-danger" onclick="executarLogout()">Logout</button>
                     </div>
 
@@ -44,12 +45,12 @@
         <section id="home" class="page-view">
             <div class="p-5 mb-4 bg-light rounded-3 home-header">
                 <div class="container-fluid py-5 text-center">
-                    <h1 class="display-5 fw-bold page-title">Bem-vindo ao nosso Blog</h1>
+                    <h1 class="display-5 fw-bold page-title">Bem-vindo ao Pl@g</h1>
                     <p class="page-subtitle">Compartilhando ideias e conhecimentos</p>
                 </div>
             </div>
             
-            <div class="row" id="posts-grid"></div>
+            <div class="row" id="posts-latest-grid"></div>
         </section>
 
         <!-- Seção Meu Cadastro -->
@@ -60,12 +61,12 @@
 
                 <form id="profile-form">
                     <div class="mb-3">
-                        <label for="profile-nome" class="form-label">Nome</label>
+                        <label for="profile-nome" class="form-label">Nome completo</label>
                         <input type="text" class="form-control" id="profile-nome" required>
                     </div>
 
                     <div class="mb-3">
-                        <label for="profile-email" class="form-label">Email</label>
+                        <label for="profile-email" class="form-label">E-mail</label>
                         <input type="email" class="form-control" id="profile-email" required>
                     </div>
 
@@ -75,21 +76,72 @@
                     </div>
                     
                     <button type="button" class="btn btn-secondary" onclick="navigateTo('home')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+                    <button type="submit" class="btn btn-custom-site-filled">Salvar</button>
                 </form>
             </div>
         </section>
         
         <!-- Seção Meus blogs -->
-        <section id="meus-blogs" class="page-view" style="display: none;">
+        <section id="blogs" class="page-view" style="display: none;">
             <div class="p-5 mb-4 bg-light rounded-3 home-header">
                 <div class="container-fluid py-5 text-center">
-                    <h1 class="display-5 fw-bold page-title">Bem-vindo ao nosso Blog</h1>
-                    <p class="page-subtitle">Compartilhando ideias e conhecimentos</p>
+                    <h1 class="display-5 fw-bold page-title" id="blogs-page-title">Blogs</h1>
+                    <p class="page-subtitle" id="blogs-page-subtitle">Gerencie ou explore publicações e conteúdos</p>
                 </div>
             </div>
             
-            <div class="row" id="blogs-grid"></div>
+            <div class="container mb-4 d-flex justify-content-end gap-2" id="blogs-action-buttons">
+                <button id="btn-ver-todos-blogs" class="btn btn-outline-secondary px-4 py-2 fw-semibold d-none" onclick="alternarModoVisualizacaoBlogs(true)">
+                    Ver Todos os Blogs
+                </button>
+                <button id="btn-criar-novo-blog" class="btn btn-custom-site px-4 py-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#blogModal">
+                    Criar novo blog
+                </button>
+            </div>
+            
+            <div class="container">
+                <div id="blogs-vazio" class="row text-center py-5 my-4" style="display: none;">
+                    <div class="col-12">
+                        <div class="mb-3 text-secondary" style="font-size: 3rem;">📂</div>
+                        <h4 class="fw-bold text-dark" id="blogs-vazio-titulo">Nenhum blog encontrado</h4>
+                        <p class="text-muted small" id="blogs-vazio-subtitulo">Crie seu primeiro blog para começar a publicar.</p>
+                    </div>
+                </div>
+
+                <div class="row" id="blogs-grid"></div>
+
+                <div id="blogs-fim" class="text-center my-4 text-muted small" style="display: none;"></div>
+            </div>
+        </section>
+        
+        <!-- Seção posts -->
+        <section id="posts" class="page-view" style="display: none;">
+            <div class="p-5 mb-4 bg-light rounded-3 home-header">
+                <div class="container-fluid py-5 text-center">
+                    <h1 class="display-5 fw-bold page-title">Blog X</h1>
+                    <p class="page-subtitle">Blog descricao</p>
+                </div>
+            </div>
+            
+            <div class="container mb-4 d-flex justify-content-end">
+                <button class="btn btn-custom-site px-4 py-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#postModal">
+                    Criar nova postagem
+                </button>
+            </div>
+            
+            <div class="container">
+                <div id="posts-vazio" class="row text-center py-5 my-4" style="display: none;">
+                    <div class="col-12">
+                        <div class="mb-3 text-secondary" style="font-size: 3rem;">📂</div>
+                        <h4 class="fw-bold text-dark">Você ainda não possui posts</h4>
+                        <p class="text-muted small">Crie seu primeiro post para começar a publicar.</p>
+                    </div>
+                </div>
+
+                <div class="row" id="posts-grid"></div>
+
+                <div id="posts-fim" class="text-center my-4 text-muted small" style="display: none;"></div>
+            </div>
         </section>
 
     </main>
@@ -127,7 +179,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                <button type="submit" class="btn btn-primary">Entrar</button>
+                <button type="submit" class="btn btn-custom-site-filled">Entrar</button>
             </div>
           </form>
         </div>
@@ -139,7 +191,7 @@
       <div class="modal-dialog">
         <div class="modal-content mx-auto my-5" style="max-width: 500px; border-radius: .5rem; background: #fff;">
           <div class="modal-header">
-            <h5 class="modal-title" id="registerModalLabel">Cadastrar Conta</h5>
+            <h5 class="modal-title" id="registerModalLabel">Cadastrar conta</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <form id="register-form">
@@ -147,7 +199,7 @@
                 <div id="register-feedback" class="alert" style="display: none;"></div>
 
                 <div class="mb-3">
-                    <label for="register-nome" class="form-label">Nome Completo</label>
+                    <label for="register-nome" class="form-label">Nome completo</label>
                     <input type="text" class="form-control" id="register-nome" required>
                 </div>
 
@@ -175,7 +227,79 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
-                <button type="submit" class="btn btn-primary">Registrar</button>
+                <button type="submit" class="btn btn-custom-site-filled">Cadastrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Blog -->
+    <div class="modal fade" id="blogModal" tabindex="-1" aria-labelledby="blogModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content mx-auto my-5" style="max-width: 500px; border-radius: .5rem; background: #fff;">
+          <div class="modal-header">
+            <h5 class="modal-title" id="blogModalLabel">Criar novo blog</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="blog-form">
+            <input type="hidden" id="blog-id">
+
+            <div class="modal-body">
+                <div id="blog-feedback" class="alert" style="display: none;"></div>
+
+                <div class="mb-3">
+                    <label for="blog-nome" class="form-label">Nome do blog (obrigatório)</label>
+                    <input type="text" class="form-control" id="blog-nome" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="blog-imagem-file" class="form-label">Imagem do blog (opcional)</label>
+                    <input type="file" class="form-control" id="blog-imagem-file" accept="image/*">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="submit" class="btn btn-custom-site-filled">Salvar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Post -->
+    <div class="modal fade" id="postModal" tabindex="-1" aria-labelledby="postModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content mx-auto my-5" style="max-width: 500px; border-radius: .5rem; background: #fff;">
+          <div class="modal-header">
+            <h5 class="modal-title" id="postModalLabel">Criar novo post</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="post-form">
+            <input type="hidden" id="post-id">
+            <input type="hidden" id="blog-id">
+
+            <div class="modal-body">
+                <div id="post-feedback" class="alert" style="display: none;"></div>
+
+                <div class="mb-3">
+                    <label for="post-titulo" class="form-label">Título do post (obrigatório)</label>
+                    <input type="text" class="form-control" id="post-titulo" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="post-conteudo" class="form-label">Texto da post</label>
+                    <textarea class="form-control" id="post-conteudo" rows="5" placeholder="Escreva o conteúdo da sua postagem aqui..." required></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label for="post-imagem-file" class="form-label">Imagem do post (opcional)</label>
+                    <input type="file" class="form-control" id="post-imagem-file" accept="image/*">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                <button type="submit" class="btn btn-custom-site-filled">Salvar</button>
             </div>
           </form>
         </div>
