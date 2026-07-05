@@ -177,6 +177,24 @@
                         <div id="post-conteudo-full" class="post-content fs-5" style="line-height: 1.8;"></div>
                     </div>
                 </div>
+
+                <!-- Seção de Comentários -->
+                <div class="card-footer bg-light pt-4">
+                    <h5 class="mb-3">💬 Comentários</h5>
+                    
+                    <div id="comments-list" class="mb-4"></div>
+                    
+                    <!-- Formulário de novo comentário (só logados) -->
+                    <div id="comment-form-container" class="d-none">
+                        <form id="comment-form">
+                            <div class="mb-3">
+                                <textarea class="form-control" id="comment-texto" rows="3" 
+                                    placeholder="Escreva seu comentário..." required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-custom-site-filled btn-sm">Publicar Comentário</button>
+                        </form>
+                    </div>
+                </div>
             </div>
         </section>
 

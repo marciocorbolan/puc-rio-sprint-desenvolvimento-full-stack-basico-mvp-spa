@@ -979,22 +979,22 @@ async function irParaPost(postId) {
             return;
         }
 
-        // Salva o estado na URL (importante para refresh)
         history.pushState(
             { page: 'post', postId: postId },
             "",
             `?page=post&postId=${postId}`
         );
 
-        // Renderiza o conteúdo
         document.getElementById('post-titulo-full').textContent = formataTextoModal(post.titulo);
         
         const conteudoEl = document.getElementById('post-conteudo-full');
-        conteudoEl.innerHTML = formataTextoModal(post.conteudo).replace(/\n/g, '<br>');
+        conteudoEl.innerHTML = formataTextoModal(post.conteudo || '').replace(/\n/g, '<br>');
 
         const imgContainer = document.getElementById('post-imagem-destaque');
-        if (post.image) {
-            const url = post.image.startsWith('data:') ? post.image : `data:image/jpeg;base64,${post.image}`;
+        if (post.image || post.imagem) {
+            const url = (post.image || post.imagem).startsWith('data:') 
+                ? (post.image || post.imagem) 
+                : `data:image/jpeg;base64,${post.image || post.imagem}`;
             imgContainer.style.backgroundImage = `url('${url}')`;
             imgContainer.style.display = 'block';
         } else {
@@ -1002,8 +1002,11 @@ async function irParaPost(postId) {
         }
 
         document.getElementById('post-meta').innerHTML = `
-            Postagem ID #${post.id} • ${new Date().toLocaleDateString('pt-BR')}
+            Postagem ID #${post.id} • ${new Date(post.data_cadastro || Date.now()).toLocaleDateString('pt-BR')}
         `;
+
+        await carregarComentarios(postId);
+        configurarFormularioComentario(postId);
 
         atualizarBotaoVoltarPost();
         navigateTo('post', true);  // 'true' para não sobrescrever a URL novamente
@@ -1384,6 +1387,119 @@ function renderCard(item, tipo = 'post') {
     }
 
     return html;
+}
+
+/***************************************************************************************/
+/* COMMENTS - FRONTEND                                                                 */
+/***************************************************************************************/
+
+async function carregarComentarios(postId) {
+    const container = document.getElementById('comments-list');
+    if (!container) return;
+
+    container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm"></div></div>';
+
+    try {
+        const comments = await fetchComments(postId);
+        
+        if (!comments || comments.length === 0) {
+            container.innerHTML = `<p class="text-muted small">Nenhum comentário ainda. Seja o primeiro!</p>`;
+            return;
+        }
+
+        container.innerHTML = comments.map(c => {
+            const data = new Date(c.data_cadastro || Date.now());
+            const dia = String(data.getDate()).padStart(2, '0');
+            const mes = String(data.getMonth() + 1).padStart(2, '0');
+            const ano = data.getFullYear();
+            const hora = String(data.getHours()).padStart(2, '0');
+            const minuto = String(data.getMinutes()).padStart(2, '0');
+            const dataFormatada = `${dia}/${mes}/${ano} ${hora}:${minuto}`;
+
+            // === APENAS O DONO DO BLOG pode excluir comentários ===
+            const ehDonoDoBlog = AppState.token && 
+                AppState.currentBlog && 
+                String(AppState.currentBlog.user_id) === String(AppState.userId);
+
+            return `
+                <div class="d-flex mb-3 border-bottom pb-3">
+                    <div class="flex-grow-1">
+                        <strong>${formataTextoModal(c.nome || c.user_nome || 'Usuário')}</strong>
+                        <small class="text-muted ms-2">${dataFormatada}</small>
+                        <p class="mb-1 mt-1">${formataTextoModal(c.texto)}</p>
+                    </div>
+                    
+                    ${ehDonoDoBlog ? `
+                        <button onclick="confirmarExclusaoComentario(${c.id})" 
+                                class="btn btn-sm btn-outline-danger ms-2" title="Excluir comentário">
+                            🗑
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = `<p class="text-danger">Erro ao carregar comentários.</p>`;
+    }
+}
+
+/***************************************************************************************/
+
+async function configurarFormularioComentario(postId) {
+    const container = document.getElementById('comment-form-container');
+    if (container) {
+        container.classList.toggle('d-none', !AppState.token);
+    }
+
+    const form = document.getElementById('comment-form');
+    if (form) {
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            await executarCriacaoComentario(postId);
+        };
+    }
+}
+
+/***************************************************************************************/
+
+async function executarCriacaoComentario(postId) {
+    const texto = document.getElementById('comment-texto').value.trim();
+
+    if (!texto) return;
+
+    try {
+        const response = await createComment(postId, texto);
+        
+        if (response.ok || response.status === 201) {
+            document.getElementById('comment-texto').value = '';
+            await carregarComentarios(postId);
+        } else {
+            alert("Erro ao publicar comentário.");
+        }
+    } catch (error) {
+        console.error(error);
+        alert("Falha ao enviar comentário.");
+    }
+}
+
+/***************************************************************************************/
+
+async function confirmarExclusaoComentario(id) {
+    if (!confirm("Tem certeza que deseja excluir este comentário?")) return;
+
+    try {
+        const response = await deleteComment(id);
+        if (response.ok || response.status === 204) {
+            const postId = new URLSearchParams(window.location.search).get('postId');
+            if (postId) await carregarComentarios(postId);
+        } else {
+            alert("Erro ao excluir comentário.");
+        }
+    } catch (error) {
+        console.error(error);
+        alert("Falha ao excluir comentário.");
+    }
 }
 
 /***************************************************************************************/

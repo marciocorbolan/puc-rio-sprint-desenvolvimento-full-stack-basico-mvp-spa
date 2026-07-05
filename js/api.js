@@ -331,3 +331,68 @@ async function deletePost(id) {
         throw error;
     }
 }
+
+/***************************************************************************************/
+/* COMMENTS                                                                            */
+/***************************************************************************************/
+
+async function fetchComments(postId = '', userId = '', page = 1, perPage = 10) {
+    let url = `${API_URL}/comments/?page=${page}&per_page=${perPage}`;
+    if (postId) url += `&post_id=${postId}`;
+    if (userId) url += `&user_id=${userId}`;
+
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: getHeaders(false)
+        });
+
+        if (!response.ok) {
+            console.error("Erro na resposta da API de comments:", response.status);
+            return [];
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error(`Falha de rede ao tentar listar comentários:`, error);
+        throw error;
+    }
+}
+
+/***************************************************************************************/
+
+async function createComment(postId, texto) {
+    try {
+        const bodyData = { 
+            post_id: parseInt(postId), 
+            texto 
+        };
+
+        const response = await fetch(`${API_URL}/comments/`, {
+            method: 'POST',
+            headers: getHeaders(true),
+            body: JSON.stringify(bodyData)
+        });
+
+        return response;
+    } catch (error) {
+        console.error(`Falha ao criar comentário no post ${postId}:`, error);
+        throw error;
+    }
+}
+
+/***************************************************************************************/
+
+async function deleteComment(id) {
+    try {
+        const response = await fetch(`${API_URL}/comments/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders(true),
+        });
+
+        return response;
+    } catch (error) {
+        console.error(`Falha ao excluir comentário ${id}:`, error);
+        throw error;
+    }
+}
