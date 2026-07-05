@@ -118,12 +118,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Configura o campo de busca para pesquisar postagens na tela inicial
     const searchInput = document.getElementById('search-input');
+    let termoBuscaAtual = '';
     if (searchInput) {
         const buscarPostsComDebounce = debounce(async (termo) => {
-            const filteredPosts = await fetchPosts('', termo);
-            renderPostsLista(filteredPosts);
-            navigateTo('posts', true);
-        }, 300);
+            termoBuscaAtual = termo.trim();
+            
+            // Resetar paginação para nova busca
+            AppState.currentPage = 1;
+            AppState.hasMore = true;
+
+            const grid = document.getElementById('posts-ultimos-grid');
+            if (grid) grid.innerHTML = '';
+
+            await carregarMaisPostsBusca(termoBuscaAtual);
+        }, 400);
 
         searchInput.addEventListener('input', (e) => {
             buscarPostsComDebounce(e.target.value);
@@ -1030,6 +1038,52 @@ async function irParaPost(postId) {
 
 /***************************************************************************************/
 
+async function carregarMaisPostsBusca(termo = '') {
+    if (AppState.isLoading || !AppState.hasMore) return;
+
+    AppState.isLoading = true;
+    const grid = document.getElementById('posts-ultimos-grid');
+
+    const spinnerId = 'home-search-spinner';
+    if (grid && !document.getElementById(spinnerId)) {
+        grid.insertAdjacentHTML('beforeend', `<div id="${spinnerId}" class="col-12 text-center my-3"><div class="spinner-border text-primary"></div></div>`);
+    }
+
+    try {
+        const posts = await fetchPosts('', termo, AppState.currentPage, AppState.perPage);
+
+        document.getElementById(spinnerId)?.remove();
+
+        if (!posts || posts.length === 0) {
+            AppState.hasMore = false;
+            if (AppState.currentPage === 1 && grid) {
+                grid.innerHTML = `
+                    <div class="col-12 text-center py-5">
+                        <p class="text-muted">Nenhuma postagem encontrada para "${termo}"</p>
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        // Usa o mesmo card dos blogs
+        const html = posts.map(post => renderCard(post, 'post')).join('');
+        grid.insertAdjacentHTML('beforeend', html);
+
+        if (posts.length < AppState.perPage) {
+            AppState.hasMore = false;
+        }
+
+        AppState.currentPage++;
+    } catch (error) {
+        console.error("Erro na busca:", error);
+    } finally {
+        AppState.isLoading = false;
+    }
+}
+
+/***************************************************************************************/
+
 async function executarCriacaoEdicaoPost() {
     AppState.startLoading("Salvando postagem...");
 
@@ -1660,6 +1714,13 @@ function converterArquivoParaBase64(arquivo) {
 window.addEventListener('scroll', () => {
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
     const threshold = scrollHeight - 150;
+    
+    // Home
+    if (document.getElementById('home').style.display !== 'none') {
+        if (!AppState.isLoading && AppState.hasMore && (scrollTop + clientHeight) >= threshold) {
+            carregarMaisPostsBusca(termoBuscaAtual || '');
+        }
+    }
 
     // Blogs
     if (document.getElementById('blogs').style.display !== 'none') {
