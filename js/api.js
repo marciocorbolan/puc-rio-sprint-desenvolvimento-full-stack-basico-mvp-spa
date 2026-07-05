@@ -27,11 +27,10 @@ async function register(nome, email, cpfcnpj, senha) {
             headers: getHeaders(false),
             body: JSON.stringify({ nome, email, cpfcnpj, senha })
         });
+
         return response;
     } catch (error) {
-        console.error("Falha de rede ao tentar registrar:", error);
-        
-        // Recombina o erro para tratamento visual no app.js
+        console.error("Falha de rede ao tentar cadastrar usuário:", error);
         throw error;
     }
 }
@@ -56,6 +55,7 @@ async function login(cpfcnpj, senha) {
                 localStorage.setItem('user_id', data.user_id);
             }
         }
+
         return response;
     } catch (error) {
         console.error("Falha de rede ao tentar fazer login:", error);
@@ -73,9 +73,10 @@ async function fetchUserProfile() {
             method: 'GET',
             headers: getHeaders(true)
         });
+
         return response;
     } catch (error) {
-        console.error("Falha de rede ao buscar perfil do usuário:", error);
+        console.error("Falha de rede ao recuperar perfil do usuário:", error);
         throw error;
     }
 }
@@ -94,6 +95,7 @@ async function updateUserProfile(nome, email, senha) {
             headers: getHeaders(true),
             body: JSON.stringify(bodyData)
         });
+
         return response;
     } catch (error) {
         console.error("Falha de rede ao atualizar perfil do usuário:", error);
@@ -105,10 +107,16 @@ async function updateUserProfile(nome, email, senha) {
 /* BLOGS                                                                               */
 /***************************************************************************************/
 
-async function fetchBlogs(userId = '', page = 1, perPage = 6) {
+async function fetchBlogs(userId = '', blogId = '', nome = '', page = 1, perPage = 6) {
     let url = `${API_URL}/blogs/?page=${page}&per_page=${perPage}`;
     if (userId) {
         url += `&user_id=${userId}`;
+    }
+    if (blogId) {
+        url += `&id=${blogId}`;
+    }
+    if (nome) {
+        url += `&nome=${encodeURIComponent(nome)}`;
     }
 
     const tokenExiste = !!localStorage.getItem('token');
@@ -123,12 +131,36 @@ async function fetchBlogs(userId = '', page = 1, perPage = 6) {
             console.error("Erro na resposta da API de blogs:", response.status);
             return [];
         }
+
         return await response.json();
     } catch (error) {
-        console.error("Falha ao conectar na API de blogs:", error);
+        console.error(`Falha de rede ao tentar listar os blogs:`, error);
         throw error;
     }
 }
+
+/***************************************************************************************/
+
+async function fetchBlogById(id) {
+    try {
+        const response = await fetch(`${API_URL}/blogs/${id}`, {
+            method: 'GET',
+            headers: getHeaders(false)
+        });
+
+        if (!response.ok) {
+            console.error("Erro na resposta da API de blogs:", response.status);
+            return null;
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error(`Falha de rede ao tentar recuperar o blog ${id}:`, error);
+        return null;
+    }
+}
+
+/***************************************************************************************/
 
 async function createBlog(nome, imagem = '') {
     try {
@@ -140,12 +172,15 @@ async function createBlog(nome, imagem = '') {
             headers: getHeaders(true), // Exige token JWT
             body: JSON.stringify(bodyData)
         });
+
         return response;
     } catch (error) {
-        console.error("Falha de rede ao tentar criar blog:", error);
+        console.error("Falha de rede ao tentar cadastrar blog:", error);
         throw error;
     }
 }
+
+/***************************************************************************************/
 
 async function updateBlog(id, nome, imagem = '') {
     try {
@@ -158,6 +193,7 @@ async function updateBlog(id, nome, imagem = '') {
             headers: getHeaders(true), // Exige token JWT
             body: JSON.stringify(bodyData)
         });
+
         return response;
     } catch (error) {
         console.error(`Falha de rede ao tentar editar o blog ${id}:`, error);
@@ -165,12 +201,15 @@ async function updateBlog(id, nome, imagem = '') {
     }
 }
 
+/***************************************************************************************/
+
 async function deleteBlog(id) {
     try {
         const response = await fetch(`${API_URL}/blogs/${id}`, {
             method: 'DELETE',
             headers: getHeaders(true), // Exige token JWT
         });
+
         return response;
     } catch (error) {
         console.error(`Falha de rede ao tentar excluir o blog ${id}:`, error);
@@ -182,8 +221,7 @@ async function deleteBlog(id) {
 /* POSTS                                                                               */
 /***************************************************************************************/
 
-async function fetchPosts(blogId = '', page = 1, perPage = 6, titulo = '') {
-    // Mantendo a estrutura de construção de URL usada em fetchBlogs[cite: 3]
+async function fetchPosts(blogId = '', titulo = '', page = 1, perPage = 6) {
     let url = `${API_URL}/posts/?page=${page}&per_page=${perPage}`;
     
     if (blogId) url += `&blog_id=${blogId}`;
@@ -192,19 +230,43 @@ async function fetchPosts(blogId = '', page = 1, perPage = 6, titulo = '') {
     try {
         const response = await fetch(url, {
             method: 'GET',
-            headers: getHeaders(false) // Segue o padrão de headers do blog[cite: 3]
+            headers: getHeaders(false)
         });
 
         if (!response.ok) {
             console.error("Erro na resposta da API de posts:", response.status);
             return [];
         }
+
         return await response.json();
     } catch (error) {
-        console.error("Falha ao conectar na API de posts:", error);
+        console.error(`Falha de rede ao tentar listar os posts:`, error);
         throw error;
     }
 }
+
+/***************************************************************************************/
+
+async function fetchPostById(id = '') {
+    try {
+        const response = await fetch(`${API_URL}/posts/${id}`, {
+            method: 'GET',
+            headers: getHeaders(false)
+        });
+
+        if (!response.ok) {
+            console.error("Erro na resposta da API de posts:", response.status);
+            return null;
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error(`Falha de rede ao tentar recuperar a postagem ${id}:`, error);
+        return null;
+    }
+}
+
+/***************************************************************************************/
 
 async function createPost(blogId, titulo, conteudo, imagem = '') {
     try {
@@ -226,15 +288,17 @@ async function createPost(blogId, titulo, conteudo, imagem = '') {
 
         return response;
     } catch (error) {
-        console.error(`Falha de rede ao tentar criar o post no blog ${blogId}:`, error);
+        console.error(`Falha de rede ao tentar cadastrar a postagem no blog ${blogId}:`, error);
         throw error;
     }
 }
 
-async function updatePost(id, postId, titulo, conteudo, imagem = '') {
+/***************************************************************************************/
+
+async function updatePost(id, blogId, titulo, conteudo, imagem = '') {
     try {
         const bodyData = {};
-        if (postId) bodyData.postId = postId;
+        if (blogId) bodyData.blog_id = blogId;
         if (titulo) bodyData.titulo = titulo;
         if (conteudo) bodyData.conteudo = conteudo;
         if (imagem) bodyData.imagem = imagem;
@@ -244,12 +308,15 @@ async function updatePost(id, postId, titulo, conteudo, imagem = '') {
             headers: getHeaders(true), // Exige token JWT
             body: JSON.stringify(bodyData)
         });
+
         return response;
     } catch (error) {
-        console.error(`Falha de rede ao tentar editar o post ${id}:`, error);
+        console.error(`Falha de rede ao tentar editar a postagem ${id}:`, error);
         throw error;
     }
 }
+
+/***************************************************************************************/
 
 async function deletePost(id) {
     try {
@@ -257,9 +324,10 @@ async function deletePost(id) {
             method: 'DELETE',
             headers: getHeaders(true), // Exige token JWT
         });
+
         return response;
     } catch (error) {
-        console.error(`Falha de rede ao tentar excluir o post ${id}:`, error);
+        console.error(`Falha de rede ao tentar excluir a postagem ${id}:`, error);
         throw error;
     }
 }

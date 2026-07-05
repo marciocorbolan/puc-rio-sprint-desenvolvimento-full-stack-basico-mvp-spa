@@ -1,21 +1,55 @@
 /***************************************************************************************/
-/* VARIAVEIS GLOBAIS                                                                   */
+/* GERENCIAMENTO DE ESTADO GLOBAL                                                                   */
 /***************************************************************************************/
 
-let blogIdContextoAtual = null;
+const AppState = {
+    // Autenticação
+    token: localStorage.getItem('token'),
+    userId: localStorage.getItem('user_id'),
+    
+    // Contexto atual
+    currentBlogId: null,
+    currentBlog: null,
+    
+    // Paginação (comum para blogs e posts)
+    currentPage: 1,
+    perPage: 6,
+    isLoading: false,
+    hasMore: true,
 
-// Controle de paginaa para o blog
-let blogCurrentPage = 1;
-let blogLoading = false;
-let blogHasMore = true;
-const blogPerPage = 6;
-let exibirTodosOsBlogs = false;
+    // Modo de visualização
+    exibirTodos: false,
 
-// Controle de paginaa para a postagem
-let postCurrentPage = 1;
-let postLoading = false;
-let postHasMore = true;
-const postPerPage = 6;
+    resetPagination() {
+        this.currentPage = 1;
+        this.hasMore = true;
+        this.isLoading = false;
+    },
+
+    startLoading(message = "Carregando...") {
+        this.isLoading = true;
+        const overlay = document.getElementById('global-loading');
+        if (overlay) {
+            overlay.querySelector('p').textContent = message;
+            overlay.classList.remove('d-none');
+        }
+        toggleGlobalUI(false);
+    },
+
+    stopLoading() {
+        this.isLoading = false;
+        document.getElementById('global-loading')?.classList.add('d-none');
+        toggleGlobalUI(true);
+    }
+};
+
+// Atualiza token quando logar
+function updateAuthState(token, userId) {
+    AppState.token = token;
+    AppState.userId = userId;
+    localStorage.setItem('token', token);
+    if (userId) localStorage.setItem('user_id', userId);
+}
 
 /***************************************************************************************/
 /* INICIALIZAÇÃO DA SPA                                                                */
@@ -23,23 +57,65 @@ const postPerPage = 6;
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Verifica se já está logado
-    if (localStorage.getItem('token')) {
+    if (AppState.token) {
         atualizarNavbarLogado();
     }
 
     /***********************************************************************************/
-    
-    // Carrega e renderiza usando a função que contém a lógica de mensagem de ausência
-    const latestPosts = await fetchPosts('', 1, 6); 
-    renderPostsLatest(latestPosts);
+
+    // Recupera estado ao recarregar a página
+    const urlParams = new URLSearchParams(window.location.search);
+    const pagina = urlParams.get('page');
+
+    if (pagina === 'posts') {
+        const blogId = urlParams.get('blogId');
+        if (blogId) {
+            AppState.currentBlogId = blogId;
+            localStorage.setItem('currentBlogId', blogId);
+        }
+    } else if (pagina === 'post') {
+        const postId = urlParams.get('postId');
+        if (postId) {
+            irParaPost(postId);
+            return;
+        }
+    }
 
     /***********************************************************************************/
 
-    // Configurar o campo de busca para filtrar posts
+    // Verifica qual página carregar logo na primeira abertura do site
+    const paginaInicial = (pagina || 'home');
+    
+    // Substitui o estado inicial vazio pelo estado da página atual
+    history.replaceState({ page: paginaInicial }, "", window.location.search || `?page=home`);
+    navigateTo(paginaInicial, true);
+
+    /***********************************************************************************/
+
+    // Escuta o botão Voltar/Avançar do próprio navegador
+    window.addEventListener('popstate', (e) => {
+        // Se houver um estado salvo no histórico, navega para ele
+        if (e.state && e.state.page) {
+            navigateTo(e.state.page, true); // O 'true' aqui ativa o isPopState
+        } else {
+            // Caso contrário, volta para a home por padrão
+            navigateTo('home', true);
+        }
+    });
+
+    /***********************************************************************************/
+    
+    // Carrega e renderiza as ultimas postagens na tela inicial
+    const latestPosts = await fetchPosts('', '', 1, 6); 
+    renderPostsListaUltimos(latestPosts);
+
+    /***********************************************************************************/
+
+    // Configura o campo de busca para pesquisar postagens na tela inicial
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
         const buscarPostsComDebounce = debounce(async (termo) => {
-            const filteredPosts = await fetchPosts(termo);
+            const filteredPosts = await fetchPosts('', termo);
             renderPostsLista(filteredPosts);
             navigateTo('posts', true);
         }, 300);
@@ -51,7 +127,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /***********************************************************************************/
 
-    // Configurar o formulário de login
+    // Configura o formulário de login
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
@@ -62,7 +138,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /***********************************************************************************/
 
-    // Configurar o formulário de cadastro
+    // Configura o formulário de cadastro
     const registerForm = document.getElementById('register-form');
     if (registerForm) {
         registerForm.addEventListener('submit', async (e) => {
@@ -73,7 +149,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /***********************************************************************************/
     
-    // Configurar o formulário de atualização de perfil
+    // Configura o formulário de atualizar perfil
     const profileForm = document.getElementById('profile-form');
     if (profileForm) {
         profileForm.addEventListener('submit', async (e) => {
@@ -84,7 +160,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /***********************************************************************************/
     
-    // Configurar o formulário de criação de blog
+    // Configura o formulário de criar blog
     const blogForm = document.getElementById('blog-form');
     if (blogForm) {
         blogForm.addEventListener('submit', async (e) => {
@@ -105,7 +181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     /***********************************************************************************/
     
-    // Configurar o formulário de criação de post
+    // Configura o formulário de criar postagem
     const postForm = document.getElementById('post-form');
     if (postForm) {
         postForm.addEventListener('submit', async (e) => {
@@ -117,9 +193,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnCriarPost = document.querySelector('[data-bs-target="#postModal"]');
     if (btnCriarPost) {
         btnCriarPost.addEventListener('click', () => {
-            document.getElementById('postModalLabel').innerText = "Criar novo post";
-            if (blogIdContextoAtual) {
-                document.getElementById('blog-id').value = blogIdContextoAtual;
+            document.getElementById('postModalLabel').innerText = "Criar nova postagem";
+            if (AppState.currentBlogId) {
+                document.getElementById('blog-id').value = AppState.currentBlogId;
             }
             document.getElementById('post-id').value = ""; // Garante que o ID está vazio
             document.getElementById('post-form').reset();
@@ -136,27 +212,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             e.target.value = formatarCpfCnpj(e.target.value);
         });
     });
-
-    /***********************************************************************************/
-
-    // Escuta o botão Voltar/Avançar do próprio navegador
-    window.addEventListener('popstate', (e) => {
-        // Se houver um estado salvo no histórico, navega para ele
-        if (e.state && e.state.page) {
-            navigateTo(e.state.page, true); // O 'true' aqui ativa o isPopState
-        } else {
-            // Caso contrário, volta para a home por padrão
-            navigateTo('home', true);
-        }
-    });
-
-    // Verifica qual página carregar logo na primeira abertura do site
-    const params = new URLSearchParams(window.location.search);
-    const paginaInicial = (params.get('page') || 'home');
-    
-    // Substitui o estado inicial vazio pelo estado da página atual
-    history.replaceState({ page: paginaInicial }, "", window.location.search || `?page=home`);
-    navigateTo(paginaInicial, true);
 });
 
 /***************************************************************************************/
@@ -171,13 +226,15 @@ function atualizarNavbarLogado() {
         authLoggedOut.classList.add('d-none');      // Esconde os botões Login/Cadastrar
         authLoggedIn.classList.remove('d-none');    // Mostra os botões do usuário logado
     }
+
+    AppState.exibirTodos = false;
 }
 
 /***************************************************************************************/
 
 // Função de navegação para alternar entre seções da SPA
 function navigateTo(viewId, isPopState = false) {
-    const sections = ['home', 'meu-cadastro', 'blogs', 'posts'];
+    const sections = ['home', 'meu-cadastro', 'blogs', 'posts', 'post'];
     sections.forEach(id => {
         const section = document.getElementById(id);
         if (section) section.style.display = 'none';
@@ -187,6 +244,8 @@ function navigateTo(viewId, isPopState = false) {
     if (targetSection) {
         targetSection.style.display = 'block';
     }
+
+    /***********************************************************************************/
     
     // Proteção de rotas autenticadas
     if (viewId === 'meu-cadastro') {
@@ -196,46 +255,65 @@ function navigateTo(viewId, isPopState = false) {
         }
     }
 
+    /***********************************************************************************/
+
     if (viewId === 'meu-cadastro') {
         carregarDadosPerfil();
     }
 
-    if (viewId === 'blogs') {
-        // Reseta os estados de paginação
-        blogCurrentPage = 1;
-        blogHasMore = true;
-        blogLoading = false;
-        
-        if (!localStorage.getItem('token')) {
-            exibirTodosOsBlogs = true;
-        } else {
-            exibirTodosOsBlogs = false; 
-        }
+    /***********************************************************************************/
 
-        const grid = document.getElementById('blogs-grid');
-        const msgVazio = document.getElementById('blogs-vazio');
-        const msgFim = document.getElementById('blogs-fim');
-        
-        if (grid) {
-            grid.innerHTML = '';
-            grid.style.display = 'flex';
-        }
-        if (msgVazio) {
-            msgVazio.style.display = 'none';
-        }
-        if (msgFim) {
-            msgFim.style.display = 'none';
-            msgFim.innerHTML = '';
-        }
-        
+    if (viewId === 'blogs') {
+        AppState.resetPagination();
+        AppState.exibirTodos = !localStorage.getItem('token');
+
         configurarInterfaceBlogs();
         carregarMaisBlogs();
     }
 
+    /***********************************************************************************/
+
+    if (viewId === 'posts') {
+        AppState.resetPagination();
+
+        if (!AppState.currentBlogId) {
+            AppState.currentBlogId = localStorage.getItem('currentBlogId');
+        }
+
+        if (AppState.currentBlogId && !AppState.currentBlog) {
+            // Aguarda o carregamento antes de configurar a interface
+            fetchBlogById(AppState.currentBlogId).then(blog => {
+                if (blog) AppState.currentBlog = blog;
+                configurarInterfacePosts();
+                carregarMaisPosts();
+            }).catch(() => {
+                configurarInterfacePosts();
+                carregarMaisPosts();
+            });
+        } else {
+            configurarInterfacePosts();
+            carregarMaisPosts();
+        }
+    }
+
+    /***********************************************************************************/
+
+    if (viewId === 'post') {
+        atualizarBotaoVoltarPost();
+    }
+
+    /***********************************************************************************/
+
     // Se a navegação NÃO veio do popstate (botão voltar/avançar), salva no histórico
     if (!isPopState) {
-        // Altera a URL para algo como: index.html?page=meu-cadastro
-        history.pushState({ page: viewId }, "", `?page=${viewId}`);
+        const urlParams = new URLSearchParams(window.location.search);
+        let newUrl = `?page=${viewId}`;
+
+        if (viewId === 'posts' && AppState.currentBlogId) {
+            newUrl += `&blogId=${AppState.currentBlogId}`;
+        }
+
+        history.pushState({ page: viewId }, "", newUrl);
     }
 }
 
@@ -244,6 +322,8 @@ function navigateTo(viewId, isPopState = false) {
 /***************************************************************************************/
 
 async function executarLogin() {
+    AppState.startLoading('Autenticando...');
+
     const form = document.getElementById('login-form');
     const botaoSubmit = document.querySelector('#login-form button[type="submit"]');
     const botaoSubmitTextoOriginal = (botaoSubmit ? botaoSubmit.innerHTML : "");
@@ -282,15 +362,7 @@ async function executarLogin() {
             atualizarNavbarLogado();
             
             setTimeout(() => {
-                const modalElement = document.getElementById('loginModal');
-                const modalInstance = bootstrap.Modal.getInstance(modalElement);
-                if (modalInstance) modalInstance.hide();
-
-                // Limpa o formulário e feedback
-                const form = document.getElementById('login-form');
-                if (form) form.reset();
-                document.getElementById('login-feedback').style.display = 'none';
-
+                resetarModalFormulario('loginModal', 'login-form');
                 restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
                 reativarFormulario(form);
             }, 1000);
@@ -315,12 +387,16 @@ async function executarLogin() {
         exibirFeedback('login-feedback', "Falha ao se conectar com o servidor.", "alert-danger");
         restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
         reativarFormulario(form);
+    } finally {
+        AppState.stopLoading();
     }
 }
 
 /***************************************************************************************/
 
 async function executarCadastro() {
+    AppState.startLoading("Cadastrando...");
+
     const form = document.getElementById('register-form');
     const botaoSubmit = document.querySelector('#register-form button[type="submit"]');
     const botaoSubmitTextoOriginal = (botaoSubmit ? botaoSubmit.innerHTML : "");
@@ -359,32 +435,18 @@ async function executarCadastro() {
             exibirFeedback('register-feedback', "Cadastro criado com sucesso!", "alert-success");
 
             setTimeout(() => {
-                const modalElement = document.getElementById('registerModal');
-                const modalInstance = bootstrap.Modal.getInstance(modalElement);
-                if (modalInstance) modalInstance.hide();
-                
-                // Limpa o formulário e feedback
-                const form = document.getElementById('register-form');
-                if (form) form.reset();
-                document.getElementById('register-feedback').style.display = 'none';
+                resetarModalFormulario('registerModal', 'register-form');
+                restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
+                reativarFormulario(form);
                 
                 // Abre o modal de login para facilitar o fluxo do usuário
                 const loginModalElement = document.getElementById('loginModal');
                 const loginModal = new bootstrap.Modal(loginModalElement);
                 loginModal.show();
-
-                restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
-                reativarFormulario(form);
             }, 1000);
-        } else if (response.status === 400) {
-            const errorData = await response.json();
-            const mensagemErro = errorData.mensagem || errorData.error || errorData.message || "Erro de validação nos dados enviados.";
-
-            exibirFeedback('register-feedback', mensagemErro, "alert-danger");
-            restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
-            reativarFormulario(form);
         } else {
-            exibirFeedback('register-feedback', "Erro ao realizar o cadastro. Verifique as informações.", "alert-danger");
+            const mensagemErro = await handleApiError(response, "Erro ao realizar o cadastro.");
+            exibirFeedback('register-feedback', mensagemErro, "alert-danger");
             restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
             reativarFormulario(form);
         }
@@ -392,6 +454,8 @@ async function executarCadastro() {
         exibirFeedback('register-feedback', "Falha ao se conectar com o servidor.", "alert-danger");
         restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
         reativarFormulario(form);
+    } finally {
+        AppState.stopLoading();
     }
 }
 
@@ -400,6 +464,8 @@ async function executarCadastro() {
 /***************************************************************************************/
 
 async function carregarDadosPerfil() {
+    AppState.startLoading("Carregando dados do perfil...");
+
     try {
         const response = await fetchUserProfile();
         if (response.ok) {
@@ -414,12 +480,16 @@ async function carregarDadosPerfil() {
         }
     } catch (error) {
         exibirFeedback('profile-feedback', "Falha ao se conectar com o servidor.", "alert-danger");
+    } finally {
+        AppState.stopLoading();
     }
 }
 
 /***************************************************************************************/
 
 async function executarAtualizacaoPerfil() {
+    AppState.startLoading("Atualizando cadastro...");
+
     const form = document.getElementById('profile-form');
     const botaoSubmit = document.querySelector('#profile-form button[type="submit"]');
     const botaoSubmitTextoOriginal = (botaoSubmit ? botaoSubmit.innerHTML : "");
@@ -445,17 +515,9 @@ async function executarAtualizacaoPerfil() {
             // Limpa o campo de senha por segurança
             const profSenha = document.getElementById('profile-senha');
             if (profSenha) profSenha.value = '';
-        } else if (response.status === 400) {
-            const errorData = await response.json();
-            const mensagemErro = errorData.mensagem || errorData.error || errorData.message || "Erro de validação ao atualizar dados.";
-
-            exibirFeedback('profile-feedback', mensagemErro, "alert-danger");
-            restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
-            reativarFormulario(form);
-        } else if (response.status === 401) {
-            executarLogout();
         } else {
-            exibirFeedback('profile-feedback', "Erro ao atualizar o perfil. Verifique os dados inseridos.", "alert-danger");
+            const mensagemErro = await handleApiError(response, "Erro ao atualizar o perfil.");
+            exibirFeedback('profile-feedback', mensagemErro, "alert-danger");
             restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
             reativarFormulario(form);
         }
@@ -463,6 +525,8 @@ async function executarAtualizacaoPerfil() {
         exibirFeedback('profile-feedback', "Falha ao se conectar com o servidor.", "alert-danger");
         restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
         reativarFormulario(form);
+    } finally {
+        AppState.stopLoading();
     }
 }
 
@@ -492,12 +556,17 @@ function executarLogout() {
 /***************************************************************************************/
 
 async function carregarMaisBlogs() {
-    if (blogLoading || !blogHasMore) return;
+    if (AppState.isLoading || !AppState.hasMore) return;
 
-    blogLoading = true;
-    
+    AppState.isLoading = true;
+    AppState.startLoading("Carregando blogs...");
+
     const grid = document.getElementById('blogs-grid');
     const msgFim = document.getElementById('blogs-fim');
+
+    if (AppState.currentPage === 1 && grid) {
+        grid.innerHTML = '';
+    }
 
     const msgFimTexto = "✨ Todos os cadastros foram carregados.";
 
@@ -511,16 +580,16 @@ async function carregarMaisBlogs() {
     }
 
     try {
-        const loggedUserId = exibirTodosOsBlogs ? '' : (localStorage.getItem('user_id') || '');
-        const blogs = await fetchBlogs(loggedUserId, blogCurrentPage, blogPerPage);
+        const loggedUserId = (AppState.exibirTodos ? '' : (localStorage.getItem('user_id') || ''));
+        const blogs = await fetchBlogs(loggedUserId, AppState.currentBlogId, '', AppState.currentPage, AppState.perPage);
         
         const spinner = document.getElementById(spinnerId);
         if (spinner) spinner.remove();
 
         if (!blogs || !Array.isArray(blogs) || (blogs.length === 0)) {
-            blogHasMore = false;
+            AppState.hasMore = false;
 
-            if (blogCurrentPage === 1) {
+            if (AppState.currentPage === 1) {
                 renderBlogsVazio();
             } else if (msgFim) {
                 msgFim.innerHTML = msgFimTexto;
@@ -531,8 +600,8 @@ async function carregarMaisBlogs() {
 
         renderBlogsLista(blogs);
 
-        if (blogs.length < blogPerPage) {
-            blogHasMore = false;
+        if (blogs.length < AppState.perPage) {
+            AppState.hasMore = false;
 
             if (msgFim) {
                 msgFim.innerHTML = msgFimTexto;
@@ -540,10 +609,10 @@ async function carregarMaisBlogs() {
             }
         }
 
-        blogCurrentPage++; 
+        AppState.currentPage++; 
 
         setTimeout(() => {
-            if (blogHasMore && !blogLoading && document.documentElement.scrollHeight <= window.innerHeight) {
+            if (AppState.hasMore && !AppState.isLoading && document.documentElement.scrollHeight <= window.innerHeight) {
                 carregarMaisBlogs();
             }
         }, 300);
@@ -552,7 +621,7 @@ async function carregarMaisBlogs() {
         if (spinner) spinner.remove();
         console.error("Erro ao processar scroll de blogs:", error);
 
-        if (blogCurrentPage > 1) {
+        if (AppState.currentPage > 1) {
             if (msgFim) {
                 msgFim.innerHTML = msgFimTexto;
                 msgFim.style.display = 'block';
@@ -570,195 +639,21 @@ async function carregarMaisBlogs() {
             }
         }
     } finally {
-        if (!blogHasMore) {
-            blogLoading = true; // Mantém "travado" para recusar novos scrolls fantasmas
+        AppState.stopLoading();
+
+        if (!AppState.hasMore) {
+            AppState.isLoading = true; // Mantém "travado" para recusar novos scrolls fantasmas
         } else {
-            blogLoading = false;
+            AppState.isLoading = false;
         }
     }
-}
-
-/***************************************************************************************/
-
-function renderBlogsLista(blogs) {
-    const grid = document.getElementById('blogs-grid');
-    const msgVazio = document.getElementById('blogs-vazio');
-    if (!grid) return;
-
-    if (blogs && (blogs.length > 0)) {
-        if (msgVazio) msgVazio.style.display = 'none';
-        grid.style.display = 'flex';
-    }
-
-    const currentUserId = localStorage.getItem('user_id');
-
-    const htmlBlogs = blogs.map(blog => {
-        let estiloBackground = '';
-        if (blog.image && blog.image.trim() !== '') {
-            const urlImagem = blog.image.startsWith('data:') 
-                ? blog.image 
-                : `data:image/jpeg;base64,${blog.image}`;
-                
-            estiloBackground = `style="background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url('${urlImagem}'); background-size: cover; background-position: center;"`;
-        }
-
-        // Condicional para exibir o botão Editar apenas se o blog pertencer ao usuário logado
-        // Certifique-se que sua API retorna a propriedade "user_id" no objeto blog para a comparação funcionar corretamente.
-        const ehDonoDoBlog = currentUserId && (String(blog.user_id) === String(currentUserId));
-        
-        const botaoEditar = ehDonoDoBlog ? `
-            <button class="btn btn-sm btn-outline-secondary" 
-                    onclick="abrirBlogModal(${blog.id}, '${formataTextoModal(blog.nome)}')">
-                Editar
-            </button>
-        ` : '';
-
-        const tituloTamanhoMaximo = 35;
-        const tituloCapitalizado = blog.nome.charAt(0).toUpperCase() + blog.nome.slice(1).toLowerCase();
-        const tituloFormatado = (tituloCapitalizado.length > tituloTamanhoMaximo) 
-            ? (tituloCapitalizado.substring(0, tituloTamanhoMaximo) + "...") 
-            : tituloCapitalizado;
-
-        return `
-            <div class="col-md-4 mb-4">
-                <div class="card h-100" ${estiloBackground}>
-                    <div class="card-body d-flex flex-column justify-content-between">
-                        <div>
-                            <h5 class="card-title fw-bold">${formataTextoModal(tituloFormatado)}</h5>
-                            <p class="card-text text-muted small">ID: #${blog.id}</p>
-                        </div>
-                        <div class="d-flex gap-2 mt-3">
-                            <a href="javascript:void(0)" class="btn btn-sm btn-custom-site" onclick="irParaPostsDoBlog(${blog.id})">Ver</a>
-                            ${botaoEditar}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    grid.insertAdjacentHTML('beforeend', htmlBlogs);
-}
-
-/***************************************************************************************/
-
-function irParaPostsDoBlog(blogId) {
-    blogIdContextoAtual = blogId;
-
-    // Reseta paginação de posts para o novo post
-    postCurrentPage = 1;
-    postHasMore = true;
-    postLoading = false;
-    
-    const grid = document.getElementById('posts-grid');
-    if (grid) grid.innerHTML = ''; // Limpa os posts anteriores
-    
-    navigateTo('posts');
-    carregarMaisPosts(blogId); // Carrega os posts específicos deste blog
-}
-
-/***************************************************************************************/
-
-function abrirBlogModal(id, nome) {
-    document.getElementById('blogModalLabel').innerText = "Editar blog";
-    document.getElementById('blog-id').value = id;
-    document.getElementById('blog-nome').value = nome;
-    document.getElementById('blog-imagem-file').value = "";
-    document.getElementById('blog-feedback').style.display = 'none';
-
-    const modalElement = document.getElementById('blogModal');
-    const modalInstance = new bootstrap.Modal(modalElement);
-    modalInstance.show();
-}
-
-/***************************************************************************************/
-
-function renderBlogsVazio() {
-    const grid = document.getElementById('blogs-grid');
-    const msgVazio = document.getElementById('blogs-vazio');
-    
-    if (grid) grid.style.display = 'none';
-    if (msgVazio) msgVazio.style.display = 'flex';
-}
-
-/***************************************************************************************/
-
-function configurarInterfaceBlogs() {
-    const token = localStorage.getItem('token');
-    const btnCriar = document.getElementById('btn-criar-novo-blog');
-    const btnVerTodos = document.getElementById('btn-ver-todos-blogs');
-    const tituloPagina = document.getElementById('blogs-page-title');
-    const subTituloPagina = document.getElementById('blogs-page-subtitle');
-    const vazioTitulo = document.getElementById('blogs-vazio-titulo');
-    const vazioSubtitulo = document.getElementById('blogs-vazio-subtitulo');
-
-    if (!token) {
-        // Usuário deslogado vendo blogs globais
-        if (btnCriar) btnCriar.classList.add('d-none');
-        if (btnVerTodos) btnVerTodos.classList.add('d-none');
-        if (tituloPagina) tituloPagina.innerText = "Blogs";
-        if (subTituloPagina) subTituloPagina.innerText = "Explore publicações e conteúdos de nossos autores";
-        if (vazioTitulo) vazioTitulo.innerText = "Nenhum blog encontrado";
-        if (vazioSubtitulo) vazioSubtitulo.innerText = "Não há blogs registrados na plataforma atualmente.";
-    } else {
-        // Usuário logado
-        if (exibirTodosOsBlogs) {
-            // Logado vendo feed global
-            if (btnCriar) btnCriar.classList.remove('d-none');
-            if (btnVerTodos) {
-                btnVerTodos.classList.remove('d-none');
-                btnVerTodos.innerText = "Ver meus blogs";
-                btnVerTodos.className = "btn btn-outline-secondary px-4 py-2 fw-semibold";
-            }
-            if (tituloPagina) tituloPagina.innerText = "Todos os blogs";
-            if (subTituloPagina) subTituloPagina.innerText = "Explorando a comunidade";
-            if (vazioTitulo) vazioTitulo.innerText = "Nenhum blog encontrado";
-            if (vazioSubtitulo) vazioSubtitulo.innerText = "Não há blogs cadastrados no sistema.";
-        } else {
-            // Logado vendo apenas os seus blogs
-            if (btnCriar) btnCriar.classList.remove('d-none');
-            if (btnVerTodos) {
-                btnVerTodos.classList.remove('d-none');
-                btnVerTodos.innerText = "Ver todos os blogs";
-                btnVerTodos.className = "btn btn-outline-secondary px-4 py-2 fw-semibold";
-            }
-            if (tituloPagina) tituloPagina.innerText = "Meus blogs";
-            if (subTituloPagina) subTituloPagina.innerText = "Gerencie suas publicações e conteúdos";
-            if (vazioTitulo) vazioTitulo.innerText = "Você ainda não possui blog cadastrado";
-            if (vazioSubtitulo) vazioSubtitulo.innerText = "Crie seu primeiro blog para começar a publicar.";
-        }
-    }
-}
-
-/***************************************************************************************/
-
-function alternarModoVisualizacaoBlogs(pressionouBotao = true) {
-    if (!localStorage.getItem('token')) return;
-
-    // Inverte o estado atual
-    exibirTodosOsBlogs = !exibirTodosOsBlogs;
-
-    // Reseta paginação para recarregar a nova lista
-    blogCurrentPage = 1;
-    blogHasMore = true;
-    blogLoading = false;
-
-    const grid = document.getElementById('blogs-grid');
-    if (grid) grid.innerHTML = '';
-
-    const msgFim = document.getElementById('blogs-fim');
-    if (msgFim) {
-        msgFim.style.display = 'none';
-        msgFim.innerHTML = '';
-    }
-
-    configurarInterfaceBlogs();
-    carregarMaisBlogs();
 }
 
 /***************************************************************************************/
 
 async function executarCriacaoEdicaoBlog() {
+    AppState.startLoading("Salvando blog...");
+
     const form = document.getElementById('blog-form');
     const botaoSubmit = document.querySelector('#blog-form button[type="submit"]');
     const botaoSubmitTextoOriginal = (botaoSubmit ? botaoSubmit.innerHTML : "");
@@ -800,44 +695,27 @@ async function executarCriacaoEdicaoBlog() {
 
         let response;
 
-        // Passa a string Base64 obtida para a função original da API
         if (modoEdicao) {
             response = await updateBlog(blogId, nome, imagemBase64 || undefined);
         } else {
             response = await createBlog(nome, imagemBase64 || undefined);
         }
 
-        if ((response.status === 200) || (response.status === 201) || response.ok) {
-            exibirFeedback('blog-feedback', ("Cadastro " + (modoEdicao ? "atualizado" : "criado") + " com sucesso!"), "alert-success");
+        if (response.ok || (response.status === 200) || (response.status === 201)) {
+            exibirFeedback('blog-feedback',
+                ("Blog " + (modoEdicao ? "atualizado" : "criado") + " com sucesso!"),
+                "alert-success"
+            );
 
             setTimeout(() => {
-                // Fecha o modal
-                const modalElement = document.getElementById('blogModal');
-                const modalInstance = bootstrap.Modal.getInstance(modalElement);
-                if (modalInstance) modalInstance.hide();
-
-                // Reseta o formulário
-                const form = document.getElementById('blog-form');
-                if (form) form.reset();
-                document.getElementById('blog-feedback').style.display = 'none';
-
+                resetarModalFormulario('blogModal', 'blog-form');
                 restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
                 reativarFormulario(form);
-
-                // Recarrega a seção de blogs limpando a paginação para exibir o novo item
                 navigateTo('blogs');
             }, 1000);
-        } else if (response.status === 401) {
-            executarLogout();
-        }  else if (response.status === 400) {
-            const errorData = await response.json();
-            const mensagemErro = errorData.mensagem || errorData.error || errorData.message || "Erro de validação nos dados enviados.";
-
-            exibirFeedback('blog-feedback', mensagemErro, "alert-danger");
-            restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
-            reativarFormulario(form);
         } else {
-            exibirFeedback('blog-feedback', "Erro ao realizar o cadastro. Verifique as informações.", "alert-danger");
+            const mensagemErro = await handleApiError(response, "Erro ao salvar blog.");
+            exibirFeedback('blog-feedback', mensagemErro, "alert-danger");
             restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
             reativarFormulario(form);
         }
@@ -845,18 +723,219 @@ async function executarCriacaoEdicaoBlog() {
         exibirFeedback('blog-feedback', "Falha ao se conectar com o servidor.", "alert-danger");
         restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
         reativarFormulario(form);
+    } finally {
+        AppState.stopLoading();
     }
+}
+
+/***************************************************************************************/
+
+async function confirmarExclusaoBlog(id, nome) {
+    if (!AppState.token) return;
+
+    if (!confirm(`Tem certeza que deseja excluir o blog "${nome}"?\n\nEsta ação não pode ser desfeita.`)) {
+        return;
+    }
+
+    AppState.startLoading("Excluindo blog...");
+
+    try {
+        const response = await deleteBlog(id);
+        
+        if (response.ok || response.status === 204) {
+            alert("Blog excluído com sucesso!");
+
+            // Recarrega a lista atual
+            const grid = document.getElementById('blogs-grid');
+            if (grid) grid.innerHTML = '';
+            AppState.currentPage = 1;
+            AppState.hasMore = true;
+            carregarMaisBlogs();
+        } else {
+            const mensagemErro = await handleApiError(response, "Erro ao excluir blog.");
+            alert(mensagemErro);
+        }
+    } catch (error) {
+        console.error("Erro ao excluir blog:", error);
+        alert("Falha ao se conectar com o servidor.");
+    } finally {
+        AppState.stopLoading();
+    }
+}
+
+/***************************************************************************************/
+
+function renderBlogsLista(blogs) {
+    const grid = document.getElementById('blogs-grid');
+    const msgVazio = document.getElementById('blogs-vazio');
+    if (!grid) return;
+
+    if (blogs && (blogs.length > 0)) {
+        if (msgVazio) msgVazio.style.display = 'none';
+        grid.style.display = 'flex';
+    }
+
+    const htmlBlogs = blogs.map(blog => renderCard(blog, 'blog')).join('');
+    grid.insertAdjacentHTML('beforeend', htmlBlogs);
+}
+
+/***************************************************************************************/
+
+function renderBlogsVazio() {
+    const grid = document.getElementById('blogs-grid');
+    const msgVazio = document.getElementById('blogs-vazio');
+    
+    if (grid) grid.style.display = 'none';
+    if (msgVazio) msgVazio.style.display = 'flex';
+}
+
+
+/***************************************************************************************/
+
+function abrirBlogModal(id, nome) {
+    document.getElementById('blogModalLabel').innerText = "Editar blog";
+    document.getElementById('blog-id').value = id;
+    document.getElementById('blog-nome').value = nome;
+    document.getElementById('blog-imagem-file').value = "";
+    document.getElementById('blog-feedback').style.display = 'none';
+
+    const modalElement = document.getElementById('blogModal');
+    const modalInstance = new bootstrap.Modal(modalElement);
+    modalInstance.show();
+}
+
+/***************************************************************************************/
+
+function alternarModoVisualizacaoBlogs(pressionouBotao = true) {
+    if (!localStorage.getItem('token')) return;
+
+    // Inverte o estado atual
+    AppState.exibirTodos = !AppState.exibirTodos;
+
+    // Reseta paginação para recarregar a nova lista
+    AppState.currentPage = 1;
+    AppState.hasMore = true;
+    AppState.isLoading = false;
+
+    const grid = document.getElementById('blogs-grid');
+    if (grid) grid.innerHTML = '';
+
+    const msgFim = document.getElementById('blogs-fim');
+    if (msgFim) {
+        msgFim.style.display = 'none';
+        msgFim.innerHTML = '';
+    }
+
+    configurarInterfaceBlogs();
+    carregarMaisBlogs();
+}
+
+/***************************************************************************************/
+
+function configurarInterfaceBlogs() {
+    const token = localStorage.getItem('token');
+    const btnCriar = document.getElementById('btn-criar-novo-blog');
+    const btnVerTodos = document.getElementById('btn-ver-todos-blogs');
+    const tituloPagina = document.getElementById('blogs-page-title');
+    const subTituloPagina = document.getElementById('blogs-page-subtitle');
+    const vazioTitulo = document.getElementById('blogs-vazio-titulo');
+    const vazioSubtitulo = document.getElementById('blogs-vazio-subtitulo');
+
+    if (!token) {
+        // Usuário deslogado vendo blogs globais
+        if (btnCriar) btnCriar.classList.add('d-none');
+        if (btnVerTodos) btnVerTodos.classList.add('d-none');
+        if (tituloPagina) tituloPagina.innerText = "Blogs";
+        if (subTituloPagina) subTituloPagina.innerText = "Explore publicações e conteúdos de nossos autores";
+        if (vazioTitulo) vazioTitulo.innerText = "Nenhum blog encontrado";
+        if (vazioSubtitulo) vazioSubtitulo.innerText = "Não há blogs registrados na plataforma atualmente.";
+    } else {
+        // Usuário logado
+        if (AppState.exibirTodos) {
+            // Logado vendo feed global
+            if (btnCriar) btnCriar.classList.remove('d-none');
+            if (btnVerTodos) {
+                btnVerTodos.classList.remove('d-none');
+                btnVerTodos.innerText = "Ver meus blogs";
+                btnVerTodos.className = "btn btn-outline-secondary px-4 py-2 fw-semibold";
+            }
+            if (tituloPagina) tituloPagina.innerText = "Todos os blogs";
+            if (subTituloPagina) subTituloPagina.innerText = "Explorando a comunidade";
+            if (vazioTitulo) vazioTitulo.innerText = "Nenhum blog encontrado";
+            if (vazioSubtitulo) vazioSubtitulo.innerText = "Não há blogs cadastrados no sistema.";
+        } else {
+            // Logado vendo apenas os seus blogs
+            if (btnCriar) btnCriar.classList.remove('d-none');
+            if (btnVerTodos) {
+                btnVerTodos.classList.remove('d-none');
+                btnVerTodos.innerText = "Ver todos os blogs";
+                btnVerTodos.className = "btn btn-outline-secondary px-4 py-2 fw-semibold";
+            }
+            if (tituloPagina) tituloPagina.innerText = "Meus blogs";
+            if (subTituloPagina) subTituloPagina.innerText = "Gerencie suas publicações e conteúdos";
+            if (vazioTitulo) vazioTitulo.innerText = "Você ainda não possui blog cadastrado";
+            if (vazioSubtitulo) vazioSubtitulo.innerText = "Crie seu primeiro blog para começar a publicar.";
+        }
+    }
+}
+
+/***************************************************************************************/
+
+async function irParaPostsDoBlog(blogId) {
+    AppState.startLoading("Carregando postagens do blog...");
+
+    try {
+        AppState.currentBlogId = blogId;
+        localStorage.setItem('currentBlogId', blogId);
+
+        AppState.currentBlog = await fetchBlogById(blogId) || { id: blogId, nome: `Blog #${blogId}` };
+
+        history.pushState(
+            { page: 'posts', blogId: blogId }, 
+            "", 
+            `?page=posts&blogId=${blogId}`
+        );
+
+        AppState.resetPagination();
+
+        const grid = document.getElementById('posts-grid');
+        if (grid) grid.innerHTML = '';
+
+        navigateTo('posts');
+
+        setTimeout(() => {
+            configurarInterfacePosts();
+            carregarMaisPosts();
+        }, 100);
+
+    } catch (error) {
+        console.error("Erro ao carregar postagens do blog:", error);
+        alert("Não foi possível carregar as postagens deste blog.");
+    } finally {
+        AppState.stopLoading();
+    }
+}
+
+/***************************************************************************************/
+
+function voltarParaBlogs() {
+    AppState.currentBlogId = null;
+    AppState.currentBlog = null;
+    localStorage.removeItem('currentBlogId');
+    navigateTo('blogs');
 }
 
 /***************************************************************************************/
 /* FLUXOS DE POST                                                                      */
 /***************************************************************************************/
 
-async function carregarMaisPosts(blogId = '') {
-    if (postLoading || !postHasMore) return;
+async function carregarMaisPosts() {
+    if (AppState.isLoading || !AppState.hasMore) return;
 
-    postLoading = true;
-    const grid = document.getElementById('posts-blog-grid');
+    AppState.isLoading = true;
+    AppState.startLoading("Carregando mais postagens...");
+
+    const grid = document.getElementById('posts-grid');
     
     const spinnerId = 'post-scroll-spinner';
     if (grid && !document.getElementById(spinnerId)) {
@@ -864,188 +943,91 @@ async function carregarMaisPosts(blogId = '') {
     }
 
     try {
-        const posts = await fetchPosts(blogId, postCurrentPage, postPerPage);
+        const posts = await fetchPosts((AppState.currentBlogId || ''), '', AppState.currentPage, AppState.perPage);
         document.getElementById(spinnerId)?.remove();
 
         if (!posts || posts.length === 0) {
-            postHasMore = false;
+            AppState.hasMore = false;
             renderPostsLista([]);
             return;
         }
 
-        // Renderiza no grid de posts do blog
         renderPostsLista(posts); 
         
-        if (posts.length < postPerPage) postHasMore = false;
-        postCurrentPage++;
+        if (posts.length < AppState.perPage) AppState.hasMore = false;
+        AppState.currentPage++;
     } catch (error) {
         document.getElementById(spinnerId)?.remove();
-        console.error("Erro ao carregar posts:", error);
+        console.error("Erro ao carregar postagens:", error);
     } finally {
-        postLoading = false;
+        AppState.stopLoading();
+        AppState.isLoading = false;
     }
 }
 
 /***************************************************************************************/
 
-function renderPostsLatest(posts) {
-    // Apontando para o grid da Home conforme solicitado
-    const grid = document.getElementById('posts-latest-grid');
-    if (!grid) return;
-    
-    // Verificação de lista vazia com o design original que você forneceu
-    if (posts.length === 0) {
-        grid.innerHTML = `
-            <div class="col-12 d-flex flex-column align-items-center justify-content-center text-center py-5 my-4">
-                <div class="mb-3 text-secondary" style="font-size: 3rem;">📭</div>
-                <h4 class="fw-bold text-dark mb-1">Nenhuma postagem encontrada</h4>
-                <p class="text-muted small mb-0">Tente refinar sua busca ou volte mais tarde para ler novas histórias.</p>
-            </div>
-        `;
-        return;
-    }
-    
-    grid.innerHTML = posts.map(post => `
-        <div class="col-md-4 mb-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title">${formataTextoModal(post.titulo)}</h5>
-                    <p class="card-text">${formataTextoModal(post.conteudo.substring(0, 100))}...</p>
-                </div>
-            </div>
-        </div>
-    `).join('');
-}
+async function irParaPost(postId) {
+    AppState.startLoading("Carregando postagem...");
 
-/***************************************************************************************/
+    try {
+        const post = await fetchPostById(postId);
 
-function renderPostsLista(posts) {
-    const grid = document.getElementById('posts-grid');
-    const msgVazio = document.getElementById('posts-vazio');
-    if (!grid) return;
-
-    if (grid) grid.innerHTML = '';
-
-    if (!posts || posts.length === 0) {
-        if (msgVazio) msgVazio.style.display = 'block';
-        if (grid) grid.style.display = 'none';
-        return;
-    }
-
-    if (msgVazio) msgVazio.style.display = 'none';
-    if (grid) grid.style.display = 'flex';
-
-    const currentUserId = localStorage.getItem('user_id');
-
-    const htmlPosts = posts.map(post => {
-        let estiloBackground = '';
-        if (post.image && post.image.trim() !== '') {
-            const urlImagem = post.image.startsWith('data:') 
-                ? post.image 
-                : `data:image/jpeg;base64,${post.image}`;
-                
-            estiloBackground = `style="background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url('${urlImagem}'); background-size: cover; background-position: center;"`;
+        if (!post) {
+            alert("Postagem não encontrada");
+            navigateTo('posts');
+            return;
         }
 
-        // Condicional para exibir o botão Editar apenas se o post pertencer ao usuário logado
-        // Certifique-se que sua API retorna a propriedade "user_id" no objeto post para a comparação funcionar corretamente.
-        const ehDonoDoPost = currentUserId && (String(post.user_id) === String(currentUserId));
+        // Salva o estado na URL (importante para refresh)
+        history.pushState(
+            { page: 'post', postId: postId },
+            "",
+            `?page=post&postId=${postId}`
+        );
+
+        // Renderiza o conteúdo
+        document.getElementById('post-titulo-full').textContent = formataTextoModal(post.titulo);
         
-        const botaoEditar = ehDonoDoPost ? `
-            <button class="btn btn-sm btn-outline-secondary" 
-                    onclick="abrirPostModal(${post.id}, ${post.blog_id}, '${formataTextoModal(post.titulo)}', '${formataTextoModal(post.conteudo)}')">
-                Editar
-            </button>
-        ` : '';
+        const conteudoEl = document.getElementById('post-conteudo-full');
+        conteudoEl.innerHTML = formataTextoModal(post.conteudo).replace(/\n/g, '<br>');
 
-        const tituloTamanhoMaximo = 35;
-        const tituloCapitalizado = post.titulo.charAt(0).toUpperCase() + post.titulo.slice(1).toLowerCase();
-        const tituloFormatado = (tituloCapitalizado.length > tituloTamanhoMaximo) 
-            ? (tituloCapitalizado.substring(0, tituloTamanhoMaximo) + "...") 
-            : tituloCapitalizado;
+        const imgContainer = document.getElementById('post-imagem-destaque');
+        if (post.image) {
+            const url = post.image.startsWith('data:') ? post.image : `data:image/jpeg;base64,${post.image}`;
+            imgContainer.style.backgroundImage = `url('${url}')`;
+            imgContainer.style.display = 'block';
+        } else {
+            imgContainer.style.display = 'none';
+        }
 
-        return `
-            <div class="col-md-4 mb-4">
-                <div class="card h-100" ${estiloBackground}>
-                    <div class="card-body d-flex flex-column justify-content-between">
-                        <div>
-                            <h5 class="card-title fw-bold">${formataTextoModal(tituloFormatado)}</h5>
-                            <p class="card-text text-muted small">ID: #${post.id}</p>
-                        </div>
-                        <div class="d-flex gap-2 mt-3">
-                            <a href="javascript:void(0)" class="btn btn-sm btn-custom-site" onclick="irParaPost(${post.id})">Ver</a>
-                            ${botaoEditar}
-                        </div>
-                    </div>
-                </div>
-            </div>
+        document.getElementById('post-meta').innerHTML = `
+            Postagem ID #${post.id} • ${new Date().toLocaleDateString('pt-BR')}
         `;
-    }).join('');
 
-    grid.insertAdjacentHTML('beforeend', htmlPosts);
-}
+        atualizarBotaoVoltarPost();
+        navigateTo('post', true);  // 'true' para não sobrescrever a URL novamente
 
-/***************************************************************************************/
-
-function abrirPostModal(id, blogId, titulo, conteudo) {
-    document.getElementById('postModalLabel').innerText = "Editar post";
-    document.getElementById('post-id').value = id;
-    document.getElementById('blog-id').value = blogId;
-    document.getElementById('post-titulo').value = titulo;
-    document.getElementById('post-conteudo').value = conteudo;
-    document.getElementById('post-imagem-file').value = "";
-    document.getElementById('post-feedback').style.display = 'none';
-
-    const modalElement = document.getElementById('postModal');
-    const modalInstance = new bootstrap.Modal(modalElement);
-    modalInstance.show();
-}
-
-/***************************************************************************************/
-
-function renderPostsVazio() {
-    const grid = document.getElementById('posts-grid');
-    const msgVazio = document.getElementById('posts-vazio');
-    
-    if (grid) grid.style.display = 'none';
-    if (msgVazio) msgVazio.style.display = 'flex';
-}
-
-/***************************************************************************************/
-
-function alternarModoVisualizacaoPosts(pressionouBotao = true) {
-    if (!localStorage.getItem('token')) return;
-
-    // Inverte o estado atual
-    exibirTodosOsPosts = !exibirTodosOsPosts;
-
-    // Reseta paginação para recarregar a nova lista
-    postCurrentPage = 1;
-    postHasMore = true;
-    postLoading = false;
-
-    const grid = document.getElementById('posts-grid');
-    if (grid) grid.innerHTML = '';
-
-    const msgFim = document.getElementById('posts-fim');
-    if (msgFim) {
-        msgFim.style.display = 'none';
-        msgFim.innerHTML = '';
+    } catch (error) {
+        console.error("Erro ao carregar postagem:", error);
+        alert("Não foi possível carregar a postagem.");
+        navigateTo('posts');
+    } finally {
+        AppState.stopLoading();
     }
-
-    configurarInterfacePosts();
-    carregarMaisPosts();
 }
 
 /***************************************************************************************/
 
 async function executarCriacaoEdicaoPost() {
+    AppState.startLoading("Salvando postagem...");
+
     const form = document.getElementById('post-form');
     const botaoSubmit = document.querySelector('#post-form button[type="submit"]');
     const botaoSubmitTextoOriginal = (botaoSubmit ? botaoSubmit.innerHTML : "");
 
     const postId = document.getElementById('post-id').value;
-    const blogId = document.getElementById('blog-id').value;
+    const blogId = (AppState.currentBlogId || document.getElementById('blog-id').value);
     const titulo = document.getElementById('post-titulo').value;
     const conteudo = document.getElementById('post-conteudo').value;
     const inputImagem = document.getElementById('post-imagem-file');
@@ -1083,44 +1065,27 @@ async function executarCriacaoEdicaoPost() {
 
         let response;
 
-        // Passa a string Base64 obtida para a função original da API
         if (modoEdicao) {
             response = await updatePost(postId, blogId, titulo, conteudo, imagemBase64 || undefined);
         } else {
             response = await createPost(blogId, titulo, conteudo, imagemBase64 || undefined);
         }
 
-        if ((response.status === 200) || (response.status === 201) || response.ok) {
-            exibirFeedback('post-feedback', ("Cadastro " + (modoEdicao ? "atualizado" : "criado") + " com sucesso!"), "alert-success");
+        if (response.ok || (response.status === 200) || (response.status === 201)) {
+            exibirFeedback('post-feedback',
+                ("Cadastro " + (modoEdicao ? "atualizado" : "criado") + " com sucesso!"),
+                "alert-success"
+            );
 
             setTimeout(() => {
-                // Fecha o modal
-                const modalElement = document.getElementById('postModal');
-                const modalInstance = bootstrap.Modal.getInstance(modalElement);
-                if (modalInstance) modalInstance.hide();
-
-                // Reseta o formulário
-                const form = document.getElementById('post-form');
-                if (form) form.reset();
-                document.getElementById('post-feedback').style.display = 'none';
-
+                resetarModalFormulario('postModal', 'post-form');
                 restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
                 reativarFormulario(form);
-
-                // Recarrega a seção de posts limpando a paginação para exibir o novo item
                 navigateTo('posts');
             }, 1000);
-        } else if (response.status === 401) {
-            executarLogout();
-        }  else if (response.status === 400) {
-            const errorData = await response.json();
-            const mensagemErro = errorData.mensagem || errorData.error || errorData.message || "Erro de validação nos dados enviados.";
-
-            exibirFeedback('post-feedback', mensagemErro, "alert-danger");
-            restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
-            reativarFormulario(form);
         } else {
-            exibirFeedback('post-feedback', "Erro ao realizar o cadastro. Verifique as informações.", "alert-danger");
+            const mensagemErro = await handleApiError(response, "Erro ao salvar postagem.");
+            exibirFeedback('post-feedback', mensagemErro, "alert-danger");
             restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
             reativarFormulario(form);
         }
@@ -1128,7 +1093,297 @@ async function executarCriacaoEdicaoPost() {
         exibirFeedback('post-feedback', "Falha ao se conectar com o servidor.", "alert-danger");
         restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
         reativarFormulario(form);
+    } finally {
+        AppState.stopLoading();
     }
+}
+
+/***************************************************************************************/
+
+async function confirmarExclusaoPost(id, titulo) {
+    if (!AppState.token) return;
+
+    if (!confirm(`Tem certeza que deseja excluir a postagem "${titulo}"?\n\nEsta ação não pode ser desfeita.`)) {
+        return;
+    }
+
+    AppState.startLoading("Excluindo postagem...");
+
+    try {
+        const response = await deletePost(id);
+        
+        if (response.ok || response.status === 204) {
+            alert("Postagem excluída com sucesso!");
+
+            // Recarrega a lista atual
+            const grid = document.getElementById('posts-grid');
+            if (grid) grid.innerHTML = '';
+            AppState.currentPage = 1;
+            AppState.hasMore = true;
+            carregarMaisPosts();
+        } else {
+            const mensagemErro = await handleApiError(response, "Erro ao excluir postagem.");
+            alert(mensagemErro);
+        }
+    } catch (error) {
+        console.error("Erro ao excluir postagem:", error);
+        alert("Falha ao se conectar com o servidor.");
+    } finally {
+        AppState.stopLoading();
+    }
+}
+
+/***************************************************************************************/
+
+function renderPostsLista(posts, append = false) {
+    const grid = document.getElementById('posts-grid');
+    const msgVazio = document.getElementById('posts-vazio');
+    if (!grid) return;
+
+    // Limpa o grid apenas na primeira carga
+    if (!append) {
+        grid.innerHTML = '';
+    }
+
+    if (!posts || posts.length === 0) {
+        if (msgVazio) msgVazio.style.display = 'block';
+        if (grid) grid.style.display = 'none';
+        return;
+    }
+
+    if (msgVazio) msgVazio.style.display = 'none';
+    if (grid) grid.style.display = 'flex';
+
+    const htmlPosts = posts.map(post => renderCard(post, 'post')).join('');
+    grid.insertAdjacentHTML('beforeend', htmlPosts);
+}
+
+/***************************************************************************************/
+
+function renderPostsVazio() {
+    const grid = document.getElementById('posts-grid');
+    const msgVazio = document.getElementById('posts-vazio');
+    
+    if (grid) grid.style.display = 'none';
+    if (msgVazio) msgVazio.style.display = 'flex';
+}
+
+/***************************************************************************************/
+
+function renderPostsListaUltimos(posts) {
+    const grid = document.getElementById('posts-ultimos-grid');
+    if (!grid) return;
+    
+    if (posts.length === 0) {
+        grid.innerHTML = `
+            <div class="col-12 d-flex flex-column align-items-center justify-content-center text-center py-5 my-4">
+                <div class="mb-3 text-secondary" style="font-size: 3rem;">📭</div>
+                <h4 class="fw-bold text-dark mb-1">Nenhuma postagem encontrada</h4>
+                <p class="text-muted small mb-0">Tente refinar sua busca ou volte mais tarde para ler novas histórias.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    grid.innerHTML = posts.map(post => `
+        <div class="col-md-4 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">${formataTextoModal(post.titulo)}</h5>
+                    <p class="card-text">${formataTextoModal(post.conteudo.substring(0, 100))}...</p>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+/***************************************************************************************/
+
+function abrirPostModal(id, blogId, titulo, conteudo) {
+    document.getElementById('postModalLabel').innerText = "Editar postagem";
+    document.getElementById('post-id').value = id;
+    document.getElementById('blog-id').value = blogId;
+    document.getElementById('post-titulo').value = titulo;
+    document.getElementById('post-conteudo').value = conteudo;
+    document.getElementById('post-imagem-file').value = "";
+    document.getElementById('post-feedback').style.display = 'none';
+
+    const modalElement = document.getElementById('postModal');
+    const modalInstance = new bootstrap.Modal(modalElement);
+    modalInstance.show();
+}
+
+/***************************************************************************************/
+
+function alternarModoVisualizacaoPosts(pressionouBotao = true) {
+    if (!localStorage.getItem('token')) return;
+
+    // Inverte o estado atual
+    AppState.exibirTodos = !AppState.exibirTodos;
+
+    // Reseta paginação
+    AppState.currentPage = 1;
+    AppState.hasMore = true;
+    AppState.isLoading = false;
+
+    const grid = document.getElementById('posts-grid');
+    if (grid) grid.innerHTML = '';
+
+    const msgFim = document.getElementById('posts-fim');
+    if (msgFim) {
+        msgFim.style.display = 'none';
+        msgFim.innerHTML = '';
+    }
+
+    configurarInterfacePosts();
+    carregarMaisPosts();
+}
+
+/***************************************************************************************/
+
+function configurarInterfacePosts() {
+    const header = document.getElementById('posts-header');
+    const tituloPagina = document.getElementById('posts-page-title');
+    const subTituloPagina = document.getElementById('posts-page-subtitle');
+    const btnCriar = document.querySelector('#posts button[data-bs-target="#postModal"]');
+    const btnVerTodos = document.getElementById('btn-ver-todos-posts');
+    const btnVoltarBlogs = document.getElementById('btn-voltar-para-blogs');
+
+    const userId = localStorage.getItem('user_id');
+    const ehDonoDoBlog = AppState.currentBlog && 
+                         AppState.currentBlog.user_id && 
+                         String(AppState.currentBlog.user_id) === String(userId);
+
+    if (AppState.currentBlog && AppState.currentBlog.nome) {
+        // Texto
+        if (tituloPagina) tituloPagina.textContent = AppState.currentBlog.nome;
+        if (subTituloPagina) subTituloPagina.textContent = "Gerencie as publicações deste blog";
+
+        // Fundo
+        if (header && AppState.currentBlog.image) {
+            const urlImagem = AppState.currentBlog.image.startsWith('data:') 
+                ? AppState.currentBlog.image 
+                : `data:image/jpeg;base64,${AppState.currentBlog.image}`;
+            header.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), url('${urlImagem}')`;
+            header.style.color = 'white';
+        } else {
+            header.style.backgroundImage = '';
+            header.style.color = '';
+        }
+
+        // Botões
+        if (btnVerTodos) btnVerTodos.classList.add('d-none');
+        if (btnVoltarBlogs) btnVoltarBlogs.classList.remove('d-none');
+        if (btnCriar) {
+            btnCriar.style.display = (AppState.token && ehDonoDoBlog) ? 'block' : 'none';
+        }
+    } else {
+        // Texto
+        if (tituloPagina) tituloPagina.textContent = "Postagens";
+        if (subTituloPagina) subTituloPagina.textContent = "Explorando conteúdos";
+
+        // Fundo
+        if (header) {
+            header.style.backgroundImage = '';
+            header.style.color = '';
+        }
+
+        // Botões
+        if (btnVerTodos && AppState.token) btnVerTodos.classList.remove('d-none');
+        if (btnVoltarBlogs) btnVoltarBlogs.classList.add('d-none');
+        if (btnCriar) {
+            btnCriar.style.display = AppState.token ? 'block' : 'none';
+        }
+    }
+}
+
+/***************************************************************************************/
+
+function atualizarBotaoVoltarPost() {
+    const btn = document.getElementById('btn-voltar-post');
+    if (!btn) return;
+
+    if (AppState.currentBlogId && AppState.currentBlog && AppState.currentBlog.nome) {
+        const nomeBlog = AppState.currentBlog.nome.length > 40 
+            ? AppState.currentBlog.nome.substring(0, 37) + '...' 
+            : AppState.currentBlog.nome;
+        
+        btn.innerHTML = `← Voltar ao blog <strong>"${nomeBlog}"</strong>`;
+    } else {
+        btn.innerHTML = '← Voltar para as postagens';
+    }
+
+    btn.onclick = () => navigateTo('posts');
+}
+
+/***************************************************************************************/
+// FUNÇÃO GENÉRICA PARA RENDERIZAR CARDS (Blogs e Posts)
+/***************************************************************************************/
+
+function renderCard(item, tipo = 'post') {
+    const currentUserId = localStorage.getItem('user_id');
+    let html = '';
+
+    if (tipo === 'blog') {
+        const ehDono = currentUserId && String(item.user_id) === String(currentUserId);
+        let estiloBackground = '';
+
+        if (item.image) {
+            const urlImagem = item.image.startsWith('data:') ? item.image : `data:image/jpeg;base64,${item.image}`;
+            estiloBackground = `style="background-image: linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url('${urlImagem}'); background-size: cover; background-position: center;"`;
+        }
+
+        html = `
+            <div class="col-md-4 mb-4">
+                <div class="card h-100" ${estiloBackground}>
+                    <div class="card-body d-flex flex-column justify-content-between">
+                        <div>
+                            <h5 class="card-title fw-bold">${formataTextoModal(item.nome)}</h5>
+                            <p class="card-text text-muted small">ID: #${item.id}</p>
+                        </div>
+                        <div class="d-flex gap-2 mt-3">
+                            <a href="javascript:void(0)" class="btn btn-sm btn-custom-site" onclick="irParaPostsDoBlog(${item.id})">Ver Postagens</a>
+                            ${ehDono ? `
+                                <button class="btn btn-sm btn-outline-secondary" onclick="abrirBlogModal(${item.id}, '${formataTextoModal(item.nome)}')">Editar</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="confirmarExclusaoBlog(${item.id}, '${formataTextoModal(item.nome)}')">Excluir</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    } 
+    else if (tipo === 'post') {
+        const ehDono = currentUserId && String(item.user_id) === String(currentUserId);
+        let estiloBackground = '';
+
+        if (item.image) {
+            const urlImagem = item.image.startsWith('data:') ? item.image : `data:image/jpeg;base64,${item.image}`;
+            estiloBackground = `style="background-image: linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)), url('${urlImagem}');"`;
+        }
+
+        html = `
+            <div class="col-md-4 mb-4">
+                <div class="card h-100" ${estiloBackground}>
+                    <div class="card-body d-flex flex-column justify-content-between">
+                        <div>
+                            <h5 class="card-title fw-bold">${formataTextoModal(item.titulo)}</h5>
+                            <p class="card-text text-muted small">ID: #${item.id}</p>
+                        </div>
+                        <div class="d-flex gap-2 mt-3">
+                            <a href="javascript:void(0)" class="btn btn-sm btn-custom-site" onclick="irParaPost(${item.id})">Ver postagem</a>
+                            ${ehDono ? `
+                                <button class="btn btn-sm btn-outline-secondary" onclick="abrirPostModal(${item.id}, ${item.blog_id}, '${formataTextoModal(item.titulo)}', '${formataTextoModal(item.conteudo)}')">Editar</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="confirmarExclusaoPost(${item.id}, '${formataTextoModal(item.titulo)}')">Excluir</button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    return html;
 }
 
 /***************************************************************************************/
@@ -1148,18 +1403,57 @@ function debounce(funcao, aguardarMs) {
 
 /***************************************************************************************/
 
+function removeQuebraLinha(str) {
+    return str.replace(/(\r\n|\n|\r)/gm, "<br>");
+}
+
 function escapeHTML(str) {
     return str.replace(/[&<>'"]/g, 
         tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
     );
 }
 
-function removeQuebraLinha(str) {
-    return str.replace(/(\r\n|\n|\r)/gm, "\\n");
+function formataTextoModal(str) {
+    if (!str) return '';
+    return escapeHTML(removeQuebraLinha(str));
 }
 
-function formataTextoModal(str) {
-    return removeQuebraLinha(escapeHTML(str));
+/***************************************************************************************/
+
+async function handleApiError(response, defaultMessage = "Erro ao processar requisição.") {
+    if (response.status === 401) {
+        executarLogout();
+        return "Sessão expirada. Faça login novamente.";
+    }
+    
+    if (response.status === 400) {
+        return response.json().then(data => 
+            data.mensagem || data.error || defaultMessage
+        ).catch(() => defaultMessage);
+    }
+    
+    return defaultMessage;
+}
+
+/***************************************************************************************/
+
+function resetarModalFormulario(modalId, formId) {
+    const modalElement = document.getElementById(modalId);
+    const form = document.getElementById(formId);
+    
+    // Fecha o modal
+    if (modalElement) {
+        const modalInstance = bootstrap.Modal.getInstance(modalElement);
+        if (modalInstance) modalInstance.hide();
+    }
+    
+    // Reseta o formulário
+    if (form) form.reset();
+    
+    // Limpa feedbacks
+    const feedbackId = formId.replace('-form', '-feedback');
+    const feedback = document.getElementById(feedbackId);
+    if (feedback) feedback.style.display = 'none';
 }
 
 /***************************************************************************************/
@@ -1190,6 +1484,17 @@ function reativarFormulario(formElement) {
     const elementos = formElement.querySelectorAll('input, select, textarea, button');
     elementos.forEach(elemento => {
         elemento.disabled = false;
+    });
+}
+
+/***************************************************************************************/
+
+function toggleGlobalUI(enabled) {
+    const buttons = document.querySelectorAll('button, .btn');
+    buttons.forEach(btn => {
+        if (!btn.closest('.modal')) {  // Não desabilita botões dentro de modais abertos
+            btn.disabled = !enabled;
+        }
     });
 }
 
@@ -1227,16 +1532,20 @@ function converterArquivoParaBase64(arquivo) {
 
 // Ouvinte de evento de rolagem (Scroll) da janela do navegador
 window.addEventListener('scroll', () => {
-    // Só monitora a rolagem se a seção ativa na tela atual for a de "blogs"
-    const meusBlogsSection = document.getElementById('blogs');
-    if (!meusBlogsSection || (meusBlogsSection.style.display === 'none')) return;
-
-    if (blogLoading || !blogHasMore) return;
-
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+    const threshold = scrollHeight - 150;
 
-    // Se o usuário chegar a 150px ou menos do fim da página, carrega mais dados
-    if ((scrollTop + clientHeight) >= (scrollHeight - 150)) {
-        carregarMaisBlogs();
+    // Blogs
+    if (document.getElementById('blogs').style.display !== 'none') {
+        if (!AppState.isLoading && AppState.hasMore && (scrollTop + clientHeight) >= threshold) {
+            carregarMaisBlogs();
+        }
+    }
+
+    // Posts
+    if (document.getElementById('posts').style.display !== 'none') {
+        if (!AppState.isLoading && AppState.hasMore && (scrollTop + clientHeight) >= threshold) {
+            carregarMaisPosts();
+        }
     }
 });

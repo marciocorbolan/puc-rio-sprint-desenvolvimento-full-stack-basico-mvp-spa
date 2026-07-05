@@ -11,6 +11,12 @@
 </head>
 <body>
 
+    <!-- Global Loading Overlay -->
+    <div id="global-loading" class="global-loading d-none">
+        <div class="spinner-border text-light" role="status"></div>
+        <p class="text-light mt-3">Carregando...</p>
+    </div>
+
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top navbar-custom">
         <div class="container">
@@ -50,7 +56,7 @@
                 </div>
             </div>
             
-            <div class="row" id="posts-latest-grid"></div>
+            <div class="row" id="posts-ultimos-grid"></div>
         </section>
 
         <!-- Seção Meu Cadastro -->
@@ -92,7 +98,7 @@
             
             <div class="container mb-4 d-flex justify-content-end gap-2" id="blogs-action-buttons">
                 <button id="btn-ver-todos-blogs" class="btn btn-outline-secondary px-4 py-2 fw-semibold d-none" onclick="alternarModoVisualizacaoBlogs(true)">
-                    Ver Todos os Blogs
+                    Ver todos os blogs
                 </button>
                 <button id="btn-criar-novo-blog" class="btn btn-custom-site px-4 py-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#blogModal">
                     Criar novo blog
@@ -116,17 +122,28 @@
         
         <!-- Seção posts -->
         <section id="posts" class="page-view" style="display: none;">
-            <div class="p-5 mb-4 bg-light rounded-3 home-header">
-                <div class="container-fluid py-5 text-center">
-                    <h1 class="display-5 fw-bold page-title">Blog X</h1>
-                    <p class="page-subtitle">Blog descricao</p>
+            <div id="posts-header" class="p-5 mb-4 bg-light rounded-3 home-header" style="background-size: cover; background-position: center; position: relative;">
+                <div class="container-fluid py-5 text-center" style="position: relative; z-index: 2;">
+                    <h1 class="display-5 fw-bold page-title" id="posts-page-title">Postagens</h1>
+                    <p class="page-subtitle" id="posts-page-subtitle">Explorando conteúdos</p>
                 </div>
             </div>
             
-            <div class="container mb-4 d-flex justify-content-end">
-                <button class="btn btn-custom-site px-4 py-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#postModal">
-                    Criar nova postagem
-                </button>
+            <div class="container mb-4 d-flex justify-content-between align-items-center" id="posts-action-buttons">
+                <div>
+                    <button id="btn-voltar-para-blogs" class="btn btn-outline-secondary px-4 py-2 fw-semibold d-none" onclick="voltarParaBlogs()">
+                        ← Voltar aos blogs
+                    </button>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <button id="btn-ver-todos-posts" class="btn btn-outline-secondary px-4 py-2 fw-semibold d-none" onclick="alternarModoVisualizacaoPosts(true)">
+                        Ver todas as postagens
+                    </button>
+                    <button id="btn-criar-novo-post" class="btn btn-custom-site px-4 py-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#postModal">
+                        Criar nova postagem
+                    </button>
+                </div>
             </div>
             
             <div class="container">
@@ -134,13 +151,32 @@
                     <div class="col-12">
                         <div class="mb-3 text-secondary" style="font-size: 3rem;">📂</div>
                         <h4 class="fw-bold text-dark">Você ainda não possui posts</h4>
-                        <p class="text-muted small">Crie seu primeiro post para começar a publicar.</p>
+                        <p class="text-muted small">Começe a publicar, crie sua primeira postagem.</p>
                     </div>
                 </div>
 
                 <div class="row" id="posts-grid"></div>
 
                 <div id="posts-fim" class="text-center my-4 text-muted small" style="display: none;"></div>
+            </div>
+        </section>
+
+        <!-- Seção Post Individual -->
+        <section id="post" class="page-view" style="display: none;">
+            <div class="container mt-4">
+                <button id="btn-voltar-post" class="btn btn-outline-secondary mb-4">
+                    ← Voltar para as postagens
+                </button>
+                
+                <div id="post-content" class="card">
+                    <div id="post-imagem-destaque" style="height: 400px; background-size: cover; background-position: center;"></div>
+                    
+                    <div class="card-body">
+                        <h1 id="post-titulo-full" class="display-5 fw-bold"></h1>
+                        <p id="post-meta" class="text-muted"></p>
+                        <div id="post-conteudo-full" class="post-content fs-5" style="line-height: 1.8;"></div>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -283,17 +319,17 @@
                 <div id="post-feedback" class="alert" style="display: none;"></div>
 
                 <div class="mb-3">
-                    <label for="post-titulo" class="form-label">Título do post (obrigatório)</label>
+                    <label for="post-titulo" class="form-label">Título da postagem (obrigatório)</label>
                     <input type="text" class="form-control" id="post-titulo" required>
                 </div>
 
                 <div class="mb-3">
-                    <label for="post-conteudo" class="form-label">Texto da post</label>
+                    <label for="post-conteudo" class="form-label">Texto da postagem</label>
                     <textarea class="form-control" id="post-conteudo" rows="5" placeholder="Escreva o conteúdo da sua postagem aqui..." required></textarea>
                 </div>
 
                 <div class="mb-3">
-                    <label for="post-imagem-file" class="form-label">Imagem do post (opcional)</label>
+                    <label for="post-imagem-file" class="form-label">Imagem da postagem (opcional)</label>
                     <input type="file" class="form-control" id="post-imagem-file" accept="image/*">
                 </div>
             </div>
