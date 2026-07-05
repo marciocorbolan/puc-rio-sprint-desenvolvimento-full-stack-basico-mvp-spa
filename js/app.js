@@ -51,6 +51,16 @@ function updateAuthState(token, userId) {
     if (userId) localStorage.setItem('user_id', userId);
 }
 
+// Ler parâmetros da URL
+function getUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return {
+        page: urlParams.get('page') || 'home',
+        blogId: urlParams.get('blogId'),
+        postId: urlParams.get('postId')
+    };
+}
+
 /***************************************************************************************/
 /* INICIALIZAÇÃO DA SPA                                                                */
 /***************************************************************************************/
@@ -64,19 +74,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     /***********************************************************************************/
 
     // Recupera estado ao recarregar a página
-    const urlParams = new URLSearchParams(window.location.search);
-    const pagina = urlParams.get('page');
+    const urlParams = getUrlParams();
 
-    if (pagina === 'posts') {
-        const blogId = urlParams.get('blogId');
-        if (blogId) {
-            AppState.currentBlogId = blogId;
-            localStorage.setItem('currentBlogId', blogId);
+    if (urlParams.page === 'posts') {
+        if (urlParams.blogId) {
+            AppState.currentBlogId = urlParams.blogId;
         }
-    } else if (pagina === 'post') {
-        const postId = urlParams.get('postId');
-        if (postId) {
-            irParaPost(postId);
+    } else if (urlParams.page === 'post') {
+        if (urlParams.postId) {
+            irParaPost(urlParams.postId);
             return;
         }
     }
@@ -84,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     /***********************************************************************************/
 
     // Verifica qual página carregar logo na primeira abertura do site
-    const paginaInicial = (pagina || 'home');
+    const paginaInicial = (urlParams.page || 'home');
     
     // Substitui o estado inicial vazio pelo estado da página atual
     history.replaceState({ page: paginaInicial }, "", window.location.search || `?page=home`);
@@ -98,8 +104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.state && e.state.page) {
             navigateTo(e.state.page, true); // O 'true' aqui ativa o isPopState
         } else {
-            // Caso contrário, volta para a home por padrão
-            navigateTo('home', true);
+            navigateTo('home', true);   // Caso contrário, volta para a home por padrão
         }
     });
 
@@ -276,12 +281,10 @@ function navigateTo(viewId, isPopState = false) {
     if (viewId === 'posts') {
         AppState.resetPagination();
 
-        if (!AppState.currentBlogId) {
-            AppState.currentBlogId = localStorage.getItem('currentBlogId');
-        }
+        const urlParams = getUrlParams();
+        AppState.currentBlogId = urlParams.blogId;
 
         if (AppState.currentBlogId && !AppState.currentBlog) {
-            // Aguarda o carregamento antes de configurar a interface
             fetchBlogById(AppState.currentBlogId).then(blog => {
                 if (blog) AppState.currentBlog = blog;
                 configurarInterfacePosts();
@@ -306,14 +309,11 @@ function navigateTo(viewId, isPopState = false) {
 
     // Se a navegação NÃO veio do popstate (botão voltar/avançar), salva no histórico
     if (!isPopState) {
-        const urlParams = new URLSearchParams(window.location.search);
         let newUrl = `?page=${viewId}`;
-
         if (viewId === 'posts' && AppState.currentBlogId) {
             newUrl += `&blogId=${AppState.currentBlogId}`;
         }
-
-        history.pushState({ page: viewId }, "", newUrl);
+        history.pushState({ page: viewId, blogId: AppState.currentBlogId }, "", newUrl);
     }
 }
 
@@ -886,9 +886,10 @@ async function irParaPostsDoBlog(blogId) {
 
     try {
         AppState.currentBlogId = blogId;
-        localStorage.setItem('currentBlogId', blogId);
-
-        AppState.currentBlog = await fetchBlogById(blogId) || { id: blogId, nome: `Blog #${blogId}` };
+        AppState.currentBlog = await fetchBlogById(blogId) || { 
+            id: blogId, 
+            nome: `Blog #${blogId}` 
+        };
 
         history.pushState(
             { page: 'posts', blogId: blogId }, 
@@ -897,17 +898,7 @@ async function irParaPostsDoBlog(blogId) {
         );
 
         AppState.resetPagination();
-
-        const grid = document.getElementById('posts-grid');
-        if (grid) grid.innerHTML = '';
-
-        navigateTo('posts');
-
-        setTimeout(() => {
-            configurarInterfacePosts();
-            carregarMaisPosts();
-        }, 100);
-
+        navigateTo('posts', true);   // true = veio do popstate
     } catch (error) {
         console.error("Erro ao carregar postagens do blog:", error);
         alert("Não foi possível carregar as postagens deste blog.");
@@ -921,7 +912,8 @@ async function irParaPostsDoBlog(blogId) {
 function voltarParaBlogs() {
     AppState.currentBlogId = null;
     AppState.currentBlog = null;
-    localStorage.removeItem('currentBlogId');
+
+    history.pushState({ page: 'blogs' }, "", "?page=blogs");
     navigateTo('blogs');
 }
 
@@ -943,7 +935,13 @@ async function carregarMaisPosts() {
     }
 
     try {
-        const posts = await fetchPosts((AppState.currentBlogId || ''), '', AppState.currentPage, AppState.perPage);
+        const posts = await fetchPosts(
+            AppState.currentBlogId || '', 
+            '', 
+            AppState.currentPage, 
+            AppState.perPage
+        );
+
         document.getElementById(spinnerId)?.remove();
 
         if (!posts || posts.length === 0) {
@@ -954,7 +952,10 @@ async function carregarMaisPosts() {
 
         renderPostsLista(posts); 
         
-        if (posts.length < AppState.perPage) AppState.hasMore = false;
+        if (posts.length < AppState.perPage) {
+            AppState.hasMore = false;
+        }
+        
         AppState.currentPage++;
     } catch (error) {
         document.getElementById(spinnerId)?.remove();
@@ -977,6 +978,13 @@ async function irParaPost(postId) {
             alert("Postagem não encontrada");
             navigateTo('posts');
             return;
+        }
+
+        if (post.blog_id) {
+            AppState.currentBlogId = post.blog_id;
+            if (!AppState.currentBlog) {
+                AppState.currentBlog = await fetchBlogById(post.blog_id);
+            }
         }
 
         history.pushState(
@@ -1188,16 +1196,7 @@ function renderPostsListaUltimos(posts) {
         return;
     }
     
-    grid.innerHTML = posts.map(post => `
-        <div class="col-md-4 mb-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title">${formataTextoModal(post.titulo)}</h5>
-                    <p class="card-text">${formataTextoModal(post.conteudo.substring(0, 100))}...</p>
-                </div>
-            </div>
-        </div>
-    `).join('');
+    grid.innerHTML = posts.map(post => renderCard(post, 'post')).join('');
 }
 
 /***************************************************************************************/
@@ -1316,7 +1315,16 @@ function atualizarBotaoVoltarPost() {
         btn.innerHTML = '← Voltar para as postagens';
     }
 
-    btn.onclick = () => navigateTo('posts');
+    btn.onclick = () => {
+        if (AppState.currentBlogId) {
+            history.pushState(
+                { page: 'posts', blogId: AppState.currentBlogId }, 
+                "", 
+                `?page=posts&blogId=${AppState.currentBlogId}`
+            );
+        }
+        navigateTo('posts');
+    };
 }
 
 /***************************************************************************************/
@@ -1491,7 +1499,9 @@ async function confirmarExclusaoComentario(id) {
     try {
         const response = await deleteComment(id);
         if (response.ok || response.status === 204) {
-            const postId = new URLSearchParams(window.location.search).get('postId');
+            const urlParams = getUrlParams();
+            const postId = urlParams.get('postId');
+
             if (postId) await carregarComentarios(postId);
         } else {
             alert("Erro ao excluir comentário.");
