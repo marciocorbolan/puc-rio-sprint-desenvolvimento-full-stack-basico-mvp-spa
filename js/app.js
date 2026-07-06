@@ -278,6 +278,13 @@ function navigateTo(viewId, isPopState = false) {
     }
 
     /***********************************************************************************/
+    
+    if (viewId === 'home') {
+        AppState.resetPagination();
+        carregarPostsHome();
+    }
+
+    /***********************************************************************************/
 
     if (viewId === 'meu-cadastro') {
         carregarDadosPerfil();
@@ -995,6 +1002,25 @@ async function carregarMaisPosts() {
     } finally {
         AppState.stopLoading();
         AppState.isLoading = false;
+    }
+}
+
+/***************************************************************************************/
+
+async function carregarPostsHome() {
+    try {
+        const latestPosts = await fetchPosts('', '', 1, 6);
+        renderPostsListaUltimos(latestPosts);
+    } catch (error) {
+        console.error("Erro ao carregar posts da home:", error);
+        const grid = document.getElementById('posts-ultimos-grid');
+        if (grid) {
+            grid.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <p class="text-muted">Não foi possível carregar as postagens recentes.</p>
+                </div>
+            `;
+        }
     }
 }
 
