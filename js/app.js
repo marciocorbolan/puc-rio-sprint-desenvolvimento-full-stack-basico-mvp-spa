@@ -1571,7 +1571,7 @@ async function confirmarExclusaoComentario(id) {
         const response = await deleteComment(id);
         if (response.ok || response.status === 204) {
             const urlParams = getUrlParams();
-            const postId = urlParams.get('postId');
+            const postId = urlParams.postId;
 
             if (postId) await carregarComentarios(postId);
         } else {
