@@ -1622,14 +1622,21 @@ async function handleApiError(response, defaultMessage = "Erro ao processar requ
         executarLogout();
         return "Sessão expirada. Faça login novamente.";
     }
-    
-    if (response.status === 400) {
-        return response.json().then(data => 
-            data.mensagem || data.error || defaultMessage
-        ).catch(() => defaultMessage);
+
+    try {
+        const errorData = await response.json();
+        
+        return errorData.mensagem || 
+               errorData.message || 
+               errorData.error || 
+               errorData.detail ||
+               defaultMessage;
+    } catch (e) {
+        if (response.status === 400) {
+            return "Dados inválidos. Verifique as informações.";
+        }
+        return defaultMessage;
     }
-    
-    return defaultMessage;
 }
 
 /***************************************************************************************/
