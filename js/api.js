@@ -8,9 +8,9 @@ const API_URL = 'http://localhost:8000';
 function getHeaders(exigeAutenticacao = false) {
     const headers = { 'Content-Type': 'application/json' };
     if (exigeAutenticacao) {
-        const token = localStorage.getItem('token');
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
+        const access_token = localStorage.getItem('access_token');
+        if (access_token) {
+            headers['Authorization'] = `Bearer ${access_token}`;
         }
     }
     return headers;
@@ -47,8 +47,20 @@ async function login(cpfcnpj, senha) {
 
         if (response.ok) {
             const data = await response.json();
-            if (data.token) {
-                localStorage.setItem('token', data.token);
+            if (data.access_token) {
+                localStorage.setItem('access_token', data.access_token);
+            }
+
+            if (data.access_expires_in) {
+                localStorage.setItem('access_expires_in', data.access_expires_in);
+            }
+
+            if (data.refresh_token) {
+                localStorage.setItem('refresh_token', data.refresh_token);
+            }
+
+            if (data.refresh_expires_in) {
+                localStorage.setItem('refresh_expires_in', data.refresh_expires_in);
             }
 
             if (data.user_id) {
@@ -119,12 +131,12 @@ async function fetchBlogs(userId = '', blogId = '', nome = '', page = 1, perPage
         url += `&nome=${encodeURIComponent(nome)}`;
     }
 
-    const tokenExiste = !!localStorage.getItem('token');
+    const accessTokenExiste = !!localStorage.getItem('access_token');
 
     try {
         const response = await fetch(url, {
             method: 'GET',
-            headers: getHeaders(tokenExiste) 
+            headers: getHeaders(accessTokenExiste) 
         });
 
         if (!response.ok) {
@@ -282,7 +294,7 @@ async function createPost(blogId, titulo, conteudo, imagem = '') {
 
         const response = await fetch(`${API_URL}/posts/`, {
             method: 'POST',
-            headers: getHeaders(true), // Exige token JWT conforme padrão
+            headers: getHeaders(true), // Exige token JWT
             body: JSON.stringify(bodyData)
         });
 

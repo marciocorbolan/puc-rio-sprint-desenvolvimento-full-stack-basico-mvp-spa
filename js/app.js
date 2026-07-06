@@ -4,7 +4,10 @@
 
 const AppState = {
     // Autenticação
-    token: localStorage.getItem('token'),
+    access_token: localStorage.getItem('access_token'),
+    access_expires_in: localStorage.getItem('access_expires_in'),
+    refresh_token: localStorage.getItem('refresh_token'),
+    refresh_expires_in: localStorage.getItem('refresh_expires_in'),
     userId: localStorage.getItem('user_id'),
     
     // Contexto atual
@@ -43,11 +46,17 @@ const AppState = {
     }
 };
 
-// Atualiza token quando logar
-function updateAuthState(token, userId) {
-    AppState.token = token;
+// Atualiza access_token quando logar
+function updateAuthState(access_token, access_expires_in, refresh_token, refresh_expires_in, userId) {
+    AppState.access_token = access_token;
+    AppState.access_expires_in = access_expires_in;
+    AppState.refresh_token = refresh_token;
+    AppState.refresh_expires_in = refresh_expires_in;
     AppState.userId = userId;
-    localStorage.setItem('token', token);
+    localStorage.setItem('access_token', access_token);
+    localStorage.setItem('access_expires_in', access_expires_in);
+    localStorage.setItem('refresh_token', refresh_token);
+    localStorage.setItem('refresh_expires_in', refresh_expires_in);
     if (userId) localStorage.setItem('user_id', userId);
 }
 
@@ -67,7 +76,7 @@ function getUrlParams() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Verifica se já está logado
-    if (AppState.token) {
+    if (AppState.access_token) {
         atualizarNavbarLogado();
     }
 
@@ -262,7 +271,7 @@ function navigateTo(viewId, isPopState = false) {
     
     // Proteção de rotas autenticadas
     if (viewId === 'meu-cadastro') {
-        if (!localStorage.getItem('token')) {
+        if (!localStorage.getItem('access_token')) {
             navigateTo('home');
             return;
         }
@@ -278,7 +287,7 @@ function navigateTo(viewId, isPopState = false) {
 
     if (viewId === 'blogs') {
         AppState.resetPagination();
-        AppState.exibirTodos = !localStorage.getItem('token');
+        AppState.exibirTodos = !localStorage.getItem('access_token');
 
         configurarInterfaceBlogs();
         carregarMaisBlogs();
@@ -523,6 +532,11 @@ async function executarAtualizacaoPerfil() {
             // Limpa o campo de senha por segurança
             const profSenha = document.getElementById('profile-senha');
             if (profSenha) profSenha.value = '';
+
+            setTimeout(() => {
+                restaurarBotao(botaoSubmit, botaoSubmitTextoOriginal);
+                reativarFormulario(form);
+            }, 1200);
         } else {
             const mensagemErro = await handleApiError(response, "Erro ao atualizar o perfil.");
             exibirFeedback('profile-feedback', mensagemErro, "alert-danger");
@@ -552,7 +566,10 @@ function exibirFeedback(targetId, mensagem, classe) {
 
 function executarLogout() {
     // Remove o token do localStorage
-    localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('access_expires_in');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('refresh_expires_in');
     localStorage.removeItem('user_id');
 
     // Atualiza a página
@@ -739,7 +756,7 @@ async function executarCriacaoEdicaoBlog() {
 /***************************************************************************************/
 
 async function confirmarExclusaoBlog(id, nome) {
-    if (!AppState.token) return;
+    if (!AppState.access_token) return;
 
     if (!confirm(`Tem certeza que deseja excluir o blog "${nome}"?\n\nEsta ação não pode ser desfeita.`)) {
         return;
@@ -815,7 +832,7 @@ function abrirBlogModal(id, nome) {
 /***************************************************************************************/
 
 function alternarModoVisualizacaoBlogs(pressionouBotao = true) {
-    if (!localStorage.getItem('token')) return;
+    if (!localStorage.getItem('access_token')) return;
 
     // Inverte o estado atual
     AppState.exibirTodos = !AppState.exibirTodos;
@@ -841,7 +858,7 @@ function alternarModoVisualizacaoBlogs(pressionouBotao = true) {
 /***************************************************************************************/
 
 function configurarInterfaceBlogs() {
-    const token = localStorage.getItem('token');
+    const access_token = localStorage.getItem('access_token');
     const btnCriar = document.getElementById('btn-criar-novo-blog');
     const btnVerTodos = document.getElementById('btn-ver-todos-blogs');
     const tituloPagina = document.getElementById('blogs-page-title');
@@ -849,7 +866,7 @@ function configurarInterfaceBlogs() {
     const vazioTitulo = document.getElementById('blogs-vazio-titulo');
     const vazioSubtitulo = document.getElementById('blogs-vazio-subtitulo');
 
-    if (!token) {
+    if (!access_token) {
         // Usuário deslogado vendo blogs globais
         if (btnCriar) btnCriar.classList.add('d-none');
         if (btnVerTodos) btnVerTodos.classList.add('d-none');
@@ -1166,7 +1183,7 @@ async function executarCriacaoEdicaoPost() {
 /***************************************************************************************/
 
 async function confirmarExclusaoPost(id, titulo) {
-    if (!AppState.token) return;
+    if (!AppState.access_token) return;
 
     if (!confirm(`Tem certeza que deseja excluir a postagem "${titulo}"?\n\nEsta ação não pode ser desfeita.`)) {
         return;
@@ -1272,7 +1289,7 @@ function abrirPostModal(id, blogId, titulo, conteudo) {
 /***************************************************************************************/
 
 function alternarModoVisualizacaoPosts(pressionouBotao = true) {
-    if (!localStorage.getItem('token')) return;
+    if (!localStorage.getItem('access_token')) return;
 
     // Inverte o estado atual
     AppState.exibirTodos = !AppState.exibirTodos;
@@ -1331,7 +1348,7 @@ function configurarInterfacePosts() {
         if (btnVerTodos) btnVerTodos.classList.add('d-none');
         if (btnVoltarBlogs) btnVoltarBlogs.classList.remove('d-none');
         if (btnCriar) {
-            btnCriar.style.display = (AppState.token && ehDonoDoBlog) ? 'block' : 'none';
+            btnCriar.style.display = (AppState.access_token && ehDonoDoBlog) ? 'block' : 'none';
         }
     } else {
         // Texto
@@ -1345,10 +1362,10 @@ function configurarInterfacePosts() {
         }
 
         // Botões
-        if (btnVerTodos && AppState.token) btnVerTodos.classList.remove('d-none');
+        if (btnVerTodos && AppState.access_token) btnVerTodos.classList.remove('d-none');
         if (btnVoltarBlogs) btnVoltarBlogs.classList.add('d-none');
         if (btnCriar) {
-            btnCriar.style.display = AppState.token ? 'block' : 'none';
+            btnCriar.style.display = AppState.access_token ? 'block' : 'none';
         }
     }
 }
@@ -1479,7 +1496,7 @@ async function carregarComentarios(postId) {
             const dataFormatada = `${dia}/${mes}/${ano} ${hora}:${minuto}`;
 
             // === APENAS O DONO DO BLOG pode excluir comentários ===
-            const ehDonoDoBlog = AppState.token && 
+            const ehDonoDoBlog = AppState.access_token && 
                 AppState.currentBlog && 
                 String(AppState.currentBlog.user_id) === String(AppState.userId);
 
@@ -1511,7 +1528,7 @@ async function carregarComentarios(postId) {
 async function configurarFormularioComentario(postId) {
     const container = document.getElementById('comment-form-container');
     if (container) {
-        container.classList.toggle('d-none', !AppState.token);
+        container.classList.toggle('d-none', !AppState.access_token);
     }
 
     const form = document.getElementById('comment-form');
