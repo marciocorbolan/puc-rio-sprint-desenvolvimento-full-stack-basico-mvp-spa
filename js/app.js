@@ -911,18 +911,25 @@ async function irParaPostsDoBlog(blogId) {
 
     try {
         AppState.currentBlogId = blogId;
-        AppState.currentBlog = await fetchBlogById(blogId) || { 
-            id: blogId, 
-            nome: `Blog #${blogId}` 
-        };
+        
+        // Aguarda o blog ser carregado
+        const blog = await fetchBlogById(blogId);
+        if (blog) {
+            AppState.currentBlog = blog;
+        } else {
+            AppState.currentBlog = { id: blogId, nome: `Blog #${blogId}` };
+        }
 
+        // Reseta paginação
+        AppState.resetPagination();
+
+        // Atualiza URL e navega
         history.pushState(
             { page: 'posts', blogId: blogId }, 
             "", 
             `?page=posts&blogId=${blogId}`
         );
 
-        AppState.resetPagination();
         navigateTo('posts', true);   // true = veio do popstate
     } catch (error) {
         console.error("Erro ao carregar postagens do blog:", error);
